@@ -1,0 +1,5 @@
+/log/
+/target/
+/.env
+/config.toml
+/docker-compose.yml

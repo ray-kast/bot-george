@@ -1,0 +1,18 @@
+[package]
+name = "docbot-derive"
+version = "0.1.0"
+authors = ["rookie1024 <rookie1286@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "docbot_derive"
+proc-macro = true
+path = "lib.rs"
+
+[dependencies]
+anyhow = "1.0.33"
+lazy_static = "1.4.0"
+proc-macro2 = "1.0.24"
+quote = "1.0.7"
+regex = "1.3.9"
+syn = { version = "1.0.42", features = ["derive", "extra-traits", "full"] }

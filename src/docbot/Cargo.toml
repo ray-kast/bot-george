@@ -1,0 +1,13 @@
+[package]
+name = "docbot"
+version = "0.1.0"
+authors = ["rookie1024 <rookie1286@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "docbot"
+path = "lib.rs"
+
+[dependencies]
+docbot-derive = { version = "0.1.0", path = "../docbot-derive" }
+thiserror = "1.0.21"

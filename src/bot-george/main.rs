@@ -1,28 +1,40 @@
-#[warn(missing_docs, clippy::all, clippy::pedantic, clippy::cargo)]
-#[deny(broken_intra_doc_links, missing_debug_implementations)]
+//! Companion bot for the UCSB GDC Discord server
+
+#![warn(missing_docs, clippy::all, clippy::pedantic, clippy::cargo)]
+#![deny(broken_intra_doc_links, missing_debug_implementations)]
 // TODO: maybe someday diesel won't rely on this??
 #[macro_use]
 extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
+pub mod commands;
 mod config;
 mod db;
 pub mod error;
 mod event_handler;
 mod logging;
 pub mod models;
+#[allow(missing_docs)]
 pub mod schema;
 
 use anyhow::Context;
 use dotenv::dotenv;
 use error::Result;
-use event_handler::{Framework, Handler};
+use event_handler::Handler;
 use futures::FutureExt;
+use lazy_static::lazy_static;
 use log::*;
 use serenity::client::Client;
-use std::{env, io};
+use std::{
+    env, io,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tokio::signal;
+
+lazy_static! {
+    static ref HAS_LOGGING: AtomicBool = AtomicBool::new(false);
+}
 
 #[tokio::main]
 async fn main() {
@@ -30,7 +42,10 @@ async fn main() {
         Ok(()) => (),
         Err(e) => {
             error!("Program terminated with error: {:?}", e);
-            eprintln!("Program terminated with error: {:?}", e);
+
+            if !HAS_LOGGING.load(Ordering::Relaxed) {
+                eprintln!("Program terminated with error: {:?}", e);
+            }
         },
     }
 }
@@ -39,7 +54,6 @@ async fn run() -> Result<()> {
     // Show the MotD
     {
         use atty::Stream;
-        use lazy_static::lazy_static;
         use regex::{Captures, Regex};
 
         lazy_static! {
@@ -68,6 +82,7 @@ async fn run() -> Result<()> {
 
     // Load logging config
     logging::init().context("failed to set up logging")?;
+    HAS_LOGGING.store(true, Ordering::Relaxed);
 
     // Now that logging is configured, log other basic info
     info!("This is BOT George v{}.", env!("CARGO_PKG_VERSION"));
@@ -80,12 +95,12 @@ async fn run() -> Result<()> {
     let conf = config::read().context("failed to load config")?;
 
     // Connect to the database
-    let _db_conn = db::connect().context("failed to connect to the database")?;
+    let db_conn = db::connect().context("failed to connect to the database")?;
 
     // Set up the API client
+    let handler = Handler::new(conf.general.command_prefix, conf.auth.superuser, db_conn)?;
     let mut client = Client::new(&conf.auth.token)
-        .event_handler(Handler)
-        .framework(Framework)
+        .event_handler(handler)
         .await
         .context("failed to create Discord client")?;
 

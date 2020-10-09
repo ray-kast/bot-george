@@ -1,11 +1,18 @@
 use crate::error::Result;
-use serde::Deserialize;
 use anyhow::Context;
+use log::*;
+use serde::Deserialize;
 use std::{env, env::VarError, fs::File, io::prelude::*};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
+    pub general: GeneralConfig,
     pub auth: AuthConfig,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct GeneralConfig {
+    pub command_prefix: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -23,10 +30,14 @@ pub fn read() -> Result<Config> {
 
     let mut vec = vec![];
 
-    File::open(path)
+    File::open(&path)
         .context("failed to open config file")?
         .read_to_end(&mut vec)
         .context("failed to read config file")?;
 
-    Ok(toml::from_slice(&vec).context("failed to parse TOML")?)
+    let config = toml::from_slice(&vec).context("failed to parse TOML")?;
+
+    info!("Config loaded from {:?}", path);
+
+    Ok(config)
 }

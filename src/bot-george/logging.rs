@@ -15,7 +15,7 @@ pub fn init() -> Result<()> {
     };
 
     if !opt || path.exists() {
-        log4rs::init_file(path.clone(), Default::default())
+        log4rs::init_file(&path, Default::default())
             .context("failed to set up logging from file")?;
 
         info!("Logging config loaded from {:?}", path);

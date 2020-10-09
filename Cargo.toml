@@ -1,4 +1,6 @@
 [workspace]
 members = [
   "src/bot-george",
+  "src/docbot",
+  "src/docbot-derive",
 ]

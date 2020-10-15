@@ -97,9 +97,9 @@ fn derive_docbot_impl(input: DeriveInput) -> Result<TokenStream> {
 
     use CommandSet::*;
 
-    let fromstr_s = quote_spanned! { span => s };
-    let fromstr_iter = quote_spanned! { span => iter };
-    let fromstr_id = quote_spanned! { span => id };
+    let fromstr_s = quote_spanned! { span => _s };
+    let fromstr_iter = quote_spanned! { span => _iter };
+    let fromstr_id = quote_spanned! { span => _id };
 
     fn fromstr_no_match(span: Span, fromstr_s: impl ToTokens) -> impl ToTokens {
         quote_spanned! { span => Err(::docbot::IdParseError::NoMatch(#fromstr_s.into())) }
@@ -135,7 +135,7 @@ fn derive_docbot_impl(input: DeriveInput) -> Result<TokenStream> {
                                         ::docbot::Anyhow::from(e),
                                     )
                                 })
-                            }).collect()
+                            }).collect::<::std::result::Result<_, _>>()
                         }
                     }
                 };

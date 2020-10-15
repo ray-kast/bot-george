@@ -47,14 +47,6 @@ pub enum RoleCommand {
     Remove(String, Vec<String>),
 }
 
-#[derive(Docbot, Debug)]
-/// dummy <req> [opt] <rest...>
-pub struct Dummy {
-    req: String,
-    opt: Option<String>,
-    rest: Vec<String>,
-}
-
 lazy_static! {
     static ref COMMAND_ARG_RE: Regex =
         Regex::new(r#"\s*(?:([^'"]\S*)|'([^']*)'|"((?:[^"\\]|\\.)*)")"#).unwrap();

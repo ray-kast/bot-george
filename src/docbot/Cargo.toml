@@ -9,5 +9,6 @@ name = "docbot"
 path = "lib.rs"
 
 [dependencies]
+anyhow = "1.0.33"
 docbot-derive = { version = "0.1.0", path = "../docbot-derive" }
 thiserror = "1.0.21"

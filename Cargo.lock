@@ -111,6 +111,7 @@ dependencies = [
  "atty",
  "diesel",
  "diesel_migrations",
+ "dispose",
  "docbot",
  "dotenv",
  "futures",
@@ -247,9 +248,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispose"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d5bdfa2d33f8188b00930f1a59356899c647f69270bda01e0777ca2d1df589c"
+dependencies = [
+ "dispose-derive",
+]
+
+[[package]]
+name = "dispose-derive"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b9adb71d9cf4a2f1e35444f660fd720252425d60baf1b76164de64f450de1e1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "docbot"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "docbot-derive",
  "thiserror",
 ]

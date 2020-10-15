@@ -27,17 +27,33 @@ use lazy_static::lazy_static;
 use log::*;
 use serenity::client::Client;
 use std::{
-    env, io,
+    env, io, panic,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tokio::signal;
+use tokio::{runtime, signal};
 
 lazy_static! {
     static ref HAS_LOGGING: AtomicBool = AtomicBool::new(false);
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    let panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |i| {
+        error!("Worker thread panicked: {:#}", i);
+
+        panic_hook(i);
+    }));
+
+    runtime::Builder::new()
+        .threaded_scheduler()
+        .enable_all()
+        .thread_name("bot-george-worker")
+        .build()
+        .unwrap()
+        .block_on(main_async());
+}
+
+async fn main_async() {
     match run().await {
         Ok(()) => (),
         Err(e) => {

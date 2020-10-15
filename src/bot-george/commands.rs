@@ -1,31 +1,34 @@
 //! Contains the bot command definitions
 
-use docbot::Docbot;
+use crate::error::Result;
+use docbot::{prelude::*, CommandParseError};
+use lazy_static::lazy_static;
+use regex::Regex;
 
 // TODO: fix false-positive ambiguities (e.g. 'm')
 
 #[derive(Docbot, Debug)]
 /// TODO
-pub enum BaseCommand<'a> {
+pub enum BaseCommand {
     /// help [command]
     /// Display information about the bot, or get help on a particular command
-    Help(Option<&'a str>),
+    Help(Option<String>),
 
     /// (role|roles) <subcommand...>
     /// Manage bot-specific roles for users
-    Role(Vec<&'a str>),
+    Role(#[docbot(subcommand)] RoleCommand),
 
     /// (modmail|mm) <message...>
     /// Send a message to the moderators without any personal data attached
-    Modmail(Vec<&'a str>),
+    Modmail(Vec<String>),
 }
 
 #[derive(Docbot, Debug)]
 /// TODO
-pub enum RoleCommand<'a> {
+pub enum RoleCommand {
     /// help [command]
     /// Get help with managing roles, or a particular role subcommand
-    Help(Option<&'a str>),
+    Help(Option<String>),
 
     /// (list|ls)
     /// List the available roles
@@ -33,13 +36,42 @@ pub enum RoleCommand<'a> {
 
     /// show [user]
     /// Show all assigned roles, or list the roles of a given user
-    Show(Option<&'a str>),
+    Show(Option<String>),
 
-    /// add <user> <role>
-    /// Add a role to a user
-    Add(&'a str, &'a str),
+    /// add <user> <roles...>
+    /// Add one or more roles to a user
+    Add(String, Vec<String>),
 
-    /// (remove|rm) <user> <role>
-    /// Remove a role from a user
-    Remove(&'a str, &'a str),
+    /// (remove|rm) <user> <roles...>
+    /// Remove one or more roles from a user
+    Remove(String, Vec<String>),
+}
+
+#[derive(Docbot, Debug)]
+/// dummy <req> [opt] <rest...>
+pub struct Dummy {
+    req: String,
+    opt: Option<String>,
+    rest: Vec<String>,
+}
+
+lazy_static! {
+    static ref COMMAND_ARG_RE: Regex =
+        Regex::new(r#"\s*(?:([^'"]\S*)|'([^']*)'|"((?:[^"\\]|\\.)*)")"#).unwrap();
+    static ref COMMAND_DQUOTE_ESCAPE_RE: Regex = Regex::new(r"\\(.)").unwrap();
+}
+
+/// Parse a base command from a string
+pub fn parse_base<'a, S: AsRef<str>>(s: S) -> Result<BaseCommand, CommandParseError> {
+    let toks = COMMAND_ARG_RE.captures_iter(s.as_ref()).map(|cap| {
+        if let Some(dquot) = cap.get(3) {
+            COMMAND_DQUOTE_ESCAPE_RE.replace_all(dquot.as_str(), "$1")
+        } else if let Some(squot) = cap.get(2) {
+            squot.as_str().into()
+        } else {
+            cap.get(1).unwrap().as_str().into()
+        }
+    });
+
+    BaseCommand::parse(toks)
 }

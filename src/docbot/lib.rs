@@ -3,6 +3,7 @@
 
 //! Create a chatbot command interface using a docopt-like API
 
+use std::convert::Infallible;
 use thiserror::Error;
 
 /// Error type for failures when parsing a command ID
@@ -27,11 +28,25 @@ pub enum CommandParseError {
     /// The command ID could not be parsed
     #[error("failed to parse command ID")]
     BadId(#[from] IdParseError),
-    /// The command arguments could not be parsed
-    #[error("failed to parse command arguments: {0}")]
-    BadArgs(&'static str),
+    /// A required argument was missing
+    #[error("missing required argument {0:?}")]
+    MissingRequired(&'static str),
+    /// `TryFrom::try_from` failed for an argument
+    #[error("failed to convert argument {0:?} from a string")]
+    BadConvert(&'static str, anyhow::Error),
+    /// Extra arguments were provided
+    #[error("trailing argument {0:?}")]
+    Trailing(String),
+    /// A subcommand failed to parse
+    #[error("failed to parse subcommand")]
+    Subcommand(Box<CommandParseError>),
 }
 
+impl From<Infallible> for CommandParseError {
+    fn from(_: Infallible) -> CommandParseError { unreachable!() }
+}
+
+pub use anyhow::Error as Anyhow;
 pub use docbot_derive::*;
 
 /// A parseable, identifiable command or family of commands
@@ -48,5 +63,5 @@ pub trait Command: Sized {
 
 /// Common traits and types used with this crate
 pub mod prelude {
-    pub use super::Command;
+    pub use super::{Command, Docbot};
 }

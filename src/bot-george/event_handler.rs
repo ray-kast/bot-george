@@ -8,11 +8,13 @@ use serenity::{
     client::{Context, EventHandler},
     model::{
         channel::{Channel, Message},
-        gateway::Ready,
+        gateway::{Activity, Ready},
         id::GuildId,
+        user::OnlineStatus,
     },
 };
 use std::{
+    fmt::{Display, Write},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -39,6 +41,7 @@ lazy_static! {
 }
 
 pub struct Handler {
+    prefix: String,
     prefix_re: Regex,
     superuser: u64,
     pool: DbPool,
@@ -58,11 +61,29 @@ impl Handler {
         ))?;
 
         return Ok(Self {
+            prefix: prefix.as_ref().into(),
             prefix_re,
             superuser,
             pool,
             me: 0.into(),
         });
+    }
+
+    pub fn prefix_command<C: Display>(&self, command: C) -> String {
+        let mut ret = String::new();
+
+        write!(ret, "{}{}", self.prefix, command).unwrap();
+
+        if !self.prefix_re.is_match(&ret) {
+            ret.clear();
+
+            write!(ret, "{} {}", self.prefix, command).unwrap();
+
+            // If neither of these work then we're in trouble
+            assert!(self.prefix_re.is_match(&ret));
+        }
+
+        ret
     }
 }
 
@@ -88,25 +109,56 @@ impl Handler {
             }
         });
 
-        match commands::parse_base(s) {
-            Ok(c) => stupid_try!(
-                msg.channel_id
-                    .send_message(&ctx, |m| m.content(format!("```{:?}```", c)))
-                    .await
-            ),
-            Err(e) => stupid_try!(
-                msg.channel_id
-                    .send_message(&ctx, |m| m.content(format!("**```{:#?}```**", e)))
-                    .await
-            ),
+        let cmd = match commands::parse_base(s) {
+            Ok(c) => c,
+            Err(e) => {
+                stupid_try!(
+                    msg.channel_id
+                        .send_message(&ctx, |m| m.content(format!("**```{:#?}```**", e)))
+                        .await
+                );
+                return;
+            },
         };
+
+        use crate::commands::BaseCommand::*;
+
+        stupid_try!(
+            msg.channel_id
+                .send_message(&ctx, |m| m.content(format!("```{:#?}```", cmd)))
+                .await
+        );
+
+        match cmd {
+            Help(_topic) => todo!(),
+            Role(rcmd) => {
+                use crate::commands::RoleCommand::*;
+                match rcmd {
+                    Help(_topic) => todo!(),
+                    List => todo!(),
+                    Show(_user) => todo!(),
+                    Add(_user, _roles) => todo!(),
+                    Remove(_user, _roles) => todo!(),
+                }
+            },
+            Modmail(_message) => todo!(),
+        }
     }
 }
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn ready(&self, _: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
         self.me.store(*ready.user.id.as_u64(), Ordering::Release);
+
+        ctx.set_presence(
+            Some(Activity::playing(&format!(
+                "CS:GO | {}",
+                self.prefix_command("help")
+            ))),
+            OnlineStatus::Online,
+        )
+        .await;
     }
 
     async fn message(&self, ctx: Context, msg: Message) {

@@ -5,8 +5,6 @@ use docbot::{prelude::*, CommandParseError};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-// TODO: fix false-positive ambiguities (e.g. 'm')
-
 #[derive(Docbot, Debug)]
 /// TODO
 pub enum BaseCommand {
@@ -54,7 +52,7 @@ lazy_static! {
 }
 
 /// Parse a base command from a string
-pub fn parse_base<'a, S: AsRef<str>>(s: S) -> Result<BaseCommand, CommandParseError> {
+pub fn parse_base<S: AsRef<str>>(s: S) -> Result<BaseCommand, CommandParseError> {
     let toks = COMMAND_ARG_RE.captures_iter(s.as_ref()).map(|cap| {
         if let Some(dquot) = cap.get(3) {
             COMMAND_DQUOTE_ESCAPE_RE.replace_all(dquot.as_str(), "$1")

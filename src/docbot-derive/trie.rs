@@ -90,12 +90,14 @@ impl<'a, T> TrieNodeRef<'a, T> {
         NR: ToTokens,
         A: Clone + Fn(Vec<&str>) -> AR,
         AR: ToTokens,
+        R: Clone + Fn(Vec<&(String, T)>) -> Option<&T>,
     >(
         &self,
         iter_id: I,
         ok: O,
         no_match: N,
         ambiguous: A,
+        resolve_ambiguous: R,
     ) -> TokenStream
     {
         let arms = self.children().map(|(chr, child)| {
@@ -105,6 +107,7 @@ impl<'a, T> TrieNodeRef<'a, T> {
                 ok.clone(),
                 no_match.clone(),
                 ambiguous.clone(),
+                resolve_ambiguous.clone(),
             );
 
             quote! { #chr => #child }
@@ -115,7 +118,15 @@ impl<'a, T> TrieNodeRef<'a, T> {
             None => Box::new(no_match()),
             Some((_, p)) => match payloads.next() {
                 None => Box::new(ok(p)),
-                Some(_) => Box::new(ambiguous(self.payloads().map(|(s, _)| &**s).collect())),
+                Some(_) => {
+                    let payloads = self.payloads().map(|(s, _)| &**s).collect::<Vec<_>>();
+
+                    if let Some(r) = resolve_ambiguous(self.payloads().collect()) {
+                        Box::new(ok(r))
+                    } else {
+                        Box::new(ambiguous(payloads))
+                    }
+                },
             },
         };
 

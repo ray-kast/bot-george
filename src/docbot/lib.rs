@@ -1,5 +1,6 @@
 #![warn(missing_docs, clippy::all, clippy::pedantic)]
 #![deny(broken_intra_doc_links, missing_debug_implementations)]
+#![allow(clippy::module_name_repetitions)]
 
 //! Create a chatbot command interface using a docopt-like API
 
@@ -49,12 +50,15 @@ impl From<Infallible> for CommandParseError {
 pub use anyhow::Error as Anyhow;
 pub use docbot_derive::*;
 
-/// A parseable, identifiable command or family of commands
+/// A parsable, identifiable command or family of commands
 pub trait Command: Sized {
     /// The type of the command ID
     type Id;
 
     /// Try to parse a sequence of arguments as a command
+    /// # Errors
+    /// Should return an error for syntax or command-not-found errors, or for
+    /// any errors while parsing arguments.
     fn parse<I: IntoIterator<Item = S>, S: AsRef<str>>(iter: I) -> Result<Self, CommandParseError>;
 
     /// Return an ID uniquely describing the base type of this command.

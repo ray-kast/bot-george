@@ -1,5 +1,6 @@
 #![warn(missing_docs, clippy::all, clippy::pedantic)]
 #![deny(broken_intra_doc_links, missing_debug_implementations)]
+#![allow(clippy::module_name_repetitions)]
 #![feature(bindings_after_at, proc_macro_diagnostic)]
 
 //! Derive macro for the docbot crate
@@ -25,7 +26,7 @@ pub fn derive_docbot(input: TokenStream1) -> TokenStream1 {
     let input = parse_macro_input!(input);
 
     match derive_docbot_impl(input) {
-        Ok(s) => {eprintln!("{}", s);s.into()},
+        Ok(s) => s.into(),
         Err((e, s)) => {
             s.unwrap()
                 .error(format!("Macro execution failed:\n{:?}", e))

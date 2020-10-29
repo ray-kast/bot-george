@@ -49,7 +49,7 @@ impl ParseOpts for FieldOpts {
         Ok(ret)
     }
 
-    fn no_opts() -> Result<Self, anyhow::Error> { Ok(Default::default()) }
+    fn no_opts() -> Result<Self, anyhow::Error> { Ok(FieldOpts::default()) }
 }
 
 impl Default for FieldOpts {

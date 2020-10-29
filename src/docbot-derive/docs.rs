@@ -80,17 +80,14 @@ fn parse_usage_line((input, span): (String, Span)) -> Result<CommandSyntax> {
         input = &input[opt.get(0).unwrap().end()..];
     }
 
-    let rest = if let Some(rest) = REST_ARG_RE.captures(input) {
+    let rest = REST_ARG_RE.captures(input).map_or(RestArg::None, |rest| {
         input = &input[rest.get(0).unwrap().end()..];
 
-        if let Some(cap) = rest.get(2) {
-            RestArg::Optional(cap.as_str().into())
-        } else {
-            RestArg::Required(rest.get(1).unwrap().as_str().into())
-        }
-    } else {
-        RestArg::None
-    };
+        rest.get(2).map_or_else(
+            || RestArg::Required(rest.get(1).unwrap().as_str().into()),
+            |cap| RestArg::Optional(cap.as_str().into()),
+        )
+    });
 
     if TRAILING_RE.is_match(input) {
         return Err((anyhow!("trailing string {:?}", input), span));

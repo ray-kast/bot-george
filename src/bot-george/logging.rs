@@ -1,9 +1,9 @@
 use crate::error::Result;
 use anyhow::Context;
-use log::*;
+use log::{info, warn, LevelFilter};
 use log4rs::{
     append::{console, console::ConsoleAppender},
-    config::{Appender, Config, Root},
+    config::{Appender, Config, Deserializers, Root},
 };
 use std::{env, env::VarError, path::PathBuf};
 
@@ -15,7 +15,7 @@ pub fn init() -> Result<()> {
     };
 
     if !opt || path.exists() {
-        log4rs::init_file(&path, Default::default())
+        log4rs::init_file(&path, Deserializers::default())
             .context("failed to set up logging from file")?;
 
         info!("Logging config loaded from {:?}", path);

@@ -1,13 +1,17 @@
+#![warn(missing_docs, clippy::all, clippy::pedantic)]
+#![deny(broken_intra_doc_links, missing_debug_implementations)]
+#![allow(clippy::module_name_repetitions)]
+#![feature(async_closure)]
+
 //! Companion bot for the UCSB GDC Discord server
 
-#![warn(missing_docs, clippy::all, clippy::pedantic, clippy::cargo)]
-#![deny(broken_intra_doc_links, missing_debug_implementations)]
 // TODO: maybe someday diesel won't rely on this??
 #[macro_use]
 extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
 
+mod bot;
 pub mod commands;
 mod config;
 mod db;
@@ -24,8 +28,8 @@ use error::Result;
 use event_handler::Handler;
 use futures::FutureExt;
 use lazy_static::lazy_static;
-use log::*;
-use serenity::client::Client;
+use log::{error, info, warn};
+use serenity::{client::Client, model::id::UserId};
 use std::{
     env, io, panic,
     sync::atomic::{AtomicBool, Ordering},
@@ -114,13 +118,17 @@ async fn run() -> Result<()> {
     let db_conn = db::connect().context("failed to connect to the database")?;
 
     // Set up the API client
-    let handler = Handler::new(conf.general.command_prefix, conf.auth.superuser, db_conn)?;
+    let handler = Handler::new(
+        conf.general.command_prefix,
+        UserId(conf.auth.superuser),
+        db_conn,
+    )?;
     let mut client = Client::new(&conf.auth.token)
         .event_handler(handler)
         .await
         .context("failed to create Discord client")?;
 
-    let shardman = client.shard_manager.clone();
+    let shard_man = client.shard_manager.clone();
 
     // Begin running, until client disconnects or program is interrupted
     tokio::select!(
@@ -136,7 +144,7 @@ async fn run() -> Result<()> {
                 .context("failed to handle SIGINT")) => {
             info!("SIGINT received, shutting down...");
 
-            shardman.lock().await.shutdown_all().await;
+            shard_man.lock().await.shutdown_all().await;
             r?;
         },
     );

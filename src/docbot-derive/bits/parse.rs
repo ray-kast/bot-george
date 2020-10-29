@@ -1,5 +1,11 @@
+#[allow(clippy::wildcard_imports)]
 use super::{id::IdParts, inputs::*};
-use crate::{attrs, docs::RestArg, opts::FieldOpts, Result};
+use crate::{
+    attrs,
+    docs::{CommandSyntax, RestArg},
+    opts::FieldOpts,
+    Result,
+};
 use anyhow::anyhow;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
@@ -43,14 +49,12 @@ fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident) -> Token
     }
 }
 
-fn ctor_fields(
+fn field_info<'a>(
     span: Span,
-    Command { docs, fields }: &Command,
-    path: TokenStream,
-    iter: &Ident,
-) -> Result<TokenStream>
+    syntax: &'a CommandSyntax,
+    fields: &'a Fields,
+) -> Result<Vec<FieldInfo<'a>>>
 {
-    let syntax = &docs.syntax;
     let args = syntax
         .required
         .iter()
@@ -101,14 +105,26 @@ fn ctor_fields(
         return Err((anyhow!("mismatched number of fields and arguments"), span));
     }
 
-    let args = args.into_iter().map(|FieldInfo { opts, name, mode }| {
+    Ok(args)
+}
+
+fn ctor_fields(
+    span: Span,
+    Command { docs, fields }: &Command,
+    path: TokenStream,
+    iter: &Ident,
+) -> Result<TokenStream>
+{
+    let info = field_info(span, &docs.syntax, fields)?;
+
+    let args = info.into_iter().map(|FieldInfo { opts, name, mode }| {
         (
             name,
             match mode {
                 FieldMode::Required => quote_spanned! { span =>
                     #iter
                         .next()
-                        .ok_or_else(|| ::docbot::CommandParseError::MissingRequired(#name))?
+                        .ok_or(::docbot::CommandParseError::MissingRequired(#name))?
                         .as_ref()
                         .parse()
                         .map_err(|e| ::docbot::CommandParseError::BadConvert(
@@ -127,7 +143,7 @@ fn ctor_fields(
                         ))?
                 },
                 FieldMode::RestRequired => {
-                    let peekable = Ident::new("_p", span);
+                    let peekable = Ident::new("__peek", span);
                     let collected = collect_rest(span, &opts, name, &peekable);
 
                     quote_spanned! { span =>
@@ -170,18 +186,18 @@ fn ctor_fields(
         },
     };
 
-    Ok(if let RestArg::None = syntax.rest {
+    Ok(if let RestArg::None = docs.syntax.rest {
         let check = quote_spanned! { span =>
-            if let Some(_s) = #iter.next() {
-                return Err(::docbot::CommandParseError::Trailing(_s.as_ref().into()));
+            if let Some(__trail) = #iter.next() {
+                return Err(::docbot::CommandParseError::Trailing(__trail.as_ref().into()));
             }
         };
 
         quote_spanned! { span =>
             {
-                let _val = #ret;
+                let __rest = #ret;
                 #check;
-                _val
+                __rest
             }
         }
     } else {
@@ -190,7 +206,7 @@ fn ctor_fields(
 }
 
 pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
-    let iter = Ident::new("_it", input.span);
+    let iter = Ident::new("__iter", input.span);
     let id_ty = &id_parts.ty;
 
     let ctors: Vec<_> = match input.commands {
@@ -229,12 +245,12 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
     let fun = quote_spanned! { input.span =>
         let mut #iter = #iter.into_iter().fuse();
 
-        let _id: #id_ty = match #iter.next() {
-            Some(_s) => _s.as_ref().parse()?,
+        let __id: #id_ty = match #iter.next() {
+            Some(__str) => __str.as_ref().parse()?,
             None => return Err(::docbot::CommandParseError::NoInput),
         };
 
-        Ok(match _id {
+        Ok(match __id {
             #(#ctors),*
         })
     };

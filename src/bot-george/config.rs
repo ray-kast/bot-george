@@ -1,6 +1,6 @@
 use crate::error::Result;
 use anyhow::Context;
-use log::*;
+use log::info;
 use serde::Deserialize;
 use std::{env, env::VarError, fs::File, io::prelude::*};
 

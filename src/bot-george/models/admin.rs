@@ -35,8 +35,12 @@ pub struct Admin {
 
 impl Admin {
     /// The snowflake ID of this user
+    #[must_use]
+    #[allow(clippy::cast_sign_loss)]
     pub fn user_id(&self) -> u64 { self.user_id as u64 }
 
     /// The role of this user, parsed from a string
+    /// # Errors
+    /// Returns an error if the role is an unrecognized string.
     pub fn role(&self) -> Result<AdminRole> { self.role.parse() }
 }

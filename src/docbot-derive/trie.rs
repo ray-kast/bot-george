@@ -38,11 +38,11 @@ impl<T> Trie<T> {
                     Some(_) => Err(anyhow!("multiple entries for identifier {:?}", breadcrumb)),
                 },
                 Some(c) => {
-                    use std::collections::hash_map::Entry::*;
+                    use std::collections::hash_map::Entry::{Occupied, Vacant};
 
                     let child = match parts.1.entry(c) {
                         Occupied(o) => o.into_mut(),
-                        Vacant(v) => v.insert(Default::default()),
+                        Vacant(v) => v.insert(TrieNodeParts::default()),
                     };
 
                     breadcrumb.push(c);
@@ -52,7 +52,7 @@ impl<T> Trie<T> {
         }
 
         let mut payloads = Vec::new();
-        let mut root = Default::default();
+        let mut root = TrieNodeParts::default();
 
         for (path, payload) in it {
             let id = payloads.len();
@@ -121,11 +121,11 @@ impl<'a, T> TrieNodeRef<'a, T> {
                 Some(_) => {
                     let payloads = self.payloads().map(|(s, _)| &**s).collect::<Vec<_>>();
 
-                    if let Some(r) = resolve_ambiguous(self.payloads().collect()) {
-                        Box::new(ok(r))
-                    } else {
-                        Box::new(ambiguous(payloads))
-                    }
+                    resolve_ambiguous(self.payloads().collect())
+                        .map_or_else::<Box<dyn ToTokens>, _, _>(
+                            || Box::new(ambiguous(payloads)),
+                            |r| Box::new(ok(r)),
+                        )
                 },
             },
         };
@@ -161,7 +161,7 @@ impl From<TrieNodeParts> for TrieNode {
             |p| Box::new([p]),
         );
 
-        return Self { payloads, children };
+        Self { payloads, children }
     }
 }
 

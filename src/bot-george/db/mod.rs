@@ -1,10 +1,12 @@
+pub mod models;
+
 use crate::error::Result;
 use anyhow::Context;
 use diesel::{
     pg::PgConnection,
     r2d2::{ConnectionManager, Pool, PooledConnection},
 };
-use log::*;
+use log::{debug, info, warn};
 use std::env;
 
 embed_migrations!("../../migrations");
@@ -37,7 +39,7 @@ pub fn connect() -> Result<DbPool> {
         Ok(s) => {
             let s = s.trim();
 
-            if s.len() > 0 {
+            if !s.is_empty() {
                 info!("Output from migrations:\n{}", s);
             }
         },

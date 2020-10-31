@@ -23,6 +23,9 @@ use uuid::Uuid;
 pub enum RoleCommand {
     /// help [command]
     /// Get help with managing roles, or a particular role subcommand
+    ///
+    /// # Arguments
+    /// command: The name of a subcommand to get info for
     Help(Option<RoleCommandId>),
 
     /// (list|ls)
@@ -31,14 +34,29 @@ pub enum RoleCommand {
 
     /// show [user]
     /// Show all assigned roles, or list the roles of a given user
+    ///
+    /// # Arguments
+    /// user: The user to show roles for.  Must be a valid user mention in order
+    ///       to work
     Show(Option<UserId>),
 
     /// add <user> <roles...>
     /// Add one or more roles to a user
+    ///
+    /// # Arguments
+    /// user: The user to add roles to.  Must be a valid user mention in order
+    ///       to work
+    /// roles: The roles to add.  Run [`roles ls`]() for a list of valid roles
     Add(UserId, BTreeSet<Role>),
 
     /// (remove|rm) <user> <roles...>
     /// Remove one or more roles from a user
+    /// 
+    /// # Arguments
+    /// user: The user to remove roles from.  Must be a valid user mention in
+    ///       order to work
+    /// roles: The roles to remove.  Run [`roles ls`]() for a list of valid
+    ///        roles
     Remove(UserId, BTreeSet<Role>),
 }
 
@@ -46,8 +64,10 @@ pub enum RoleCommand {
 #[derive(Docbot, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
     /// admin
+    /// Allow users to control the behavior of the bot, and appoint mods
     Admin,
     /// (mod|moderator)
+    /// Allow users to receive modmail
     Mod,
 }
 

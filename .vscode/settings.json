@@ -2,6 +2,7 @@
     "cSpell.words": [
         "appender",
         "clippy",
+        "codeblock",
         "deserializer",
         "deserializers",
         "docbot",
@@ -13,6 +14,7 @@
         "modmail",
         "peekable",
         "queryable",
+        "rustc",
         "squote",
         "thiserror",
         "ucsb",

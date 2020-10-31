@@ -25,7 +25,7 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 pub fn derive_docbot(input: TokenStream1) -> TokenStream1 {
     let input = parse_macro_input!(input);
 
-    match derive_docbot_impl(input) {
+    match derive_docbot_impl(&input) {
         Ok(s) => s.into(),
         Err((e, s)) => {
             s.unwrap()
@@ -36,8 +36,8 @@ pub fn derive_docbot(input: TokenStream1) -> TokenStream1 {
     }
 }
 
-fn derive_docbot_impl(input: DeriveInput) -> Result<TokenStream> {
-    let inputs = bits::inputs::assemble(&input)?;
+fn derive_docbot_impl(input: &DeriveInput) -> Result<TokenStream> {
+    let inputs = bits::inputs::assemble(input)?;
     let id_parts = bits::id::emit(&inputs)?;
     let parse_parts = bits::parse::emit(&inputs, &id_parts)?;
     let help_parts = bits::help::emit(&inputs)?;

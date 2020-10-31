@@ -87,13 +87,24 @@ pub struct CommandUsage {
     pub desc: &'static str,
 }
 
+/// Detailed description of a command argument
+#[derive(Debug, Clone)]
+pub struct ArgumentDesc {
+    /// The name of the argument
+    pub name: &'static str,
+    /// Whether the argument is required
+    pub is_required: bool,
+    /// A detailed description of the argument
+    pub desc: &'static str,
+}
+
 /// Detailed description of a command
 #[derive(Debug, Clone)]
 pub struct CommandDesc {
     /// A detailed summary of the command's behavior
-    pub summary: &'static str,
+    pub summary: Option<&'static str>,
     /// Descriptions of the command's arguments
-    pub args: &'static [(&'static str, &'static str)],
+    pub args: &'static [ArgumentDesc],
     /// Example uses of the command
     pub examples: Option<&'static str>,
 }

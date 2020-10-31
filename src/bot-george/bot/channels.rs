@@ -10,11 +10,16 @@ use serenity::model::id::{ChannelId, GuildId, UserId};
 use std::collections::HashMap;
 use thiserror::Error;
 
+// TODO: allow referring to channels by bot-assigned alias?
 #[derive(Docbot, Debug)]
-/// TODO
+/// TODO: document `ChannelCommand`
 pub enum ChannelCommand {
     /// help [command]
-    /// Get help with managing channel behavior, or a particular channel subcommand
+    /// Get help with managing channel behavior, or a particular channel
+    /// subcommand
+    ///
+    /// # Arguments
+    /// command: The name of a subcommand to get info for
     Help(Option<ChannelCommandId>),
 
     /// (list|ls)
@@ -23,18 +28,36 @@ pub enum ChannelCommand {
 
     /// show [channel]
     /// Show all channel modes, or list the mode of a given channel
+    ///
+    /// # Arguments
+    /// channel: The name of a channel to display the mode of.  Must be a valid 
+    ///          #mention in order to work
     Show(Option<ChannelId>),
 
     /// default <mode>
     /// Set the default behavior mode for unmarked channels
+    ///
+    /// # Arguments
+    /// mode: The default mode to use.  Run [`channel ls`]() for a list of
+    ///       valid modes
     Default(ChannelMode),
 
     /// (mark|set) <channel> <mode>
     /// Change the behavior of the bot for a specific channel
+    ///
+    /// # Arguments
+    /// channel: The channel to mark.  Must be a valid #mention in order to work
+    /// mode: The mode to mark the channel with.  Run [`channel ls`]() for a
+    ///       list of valid modes
     Mark(ChannelId, ChannelMode),
 
     /// (unmark|clear|reset) <channel>
-    /// Clear any channel-specific behavior for a channel, resetting it to the default
+    /// Clear any channel-specific behavior for a channel, resetting it to the
+    /// default
+    /// 
+    /// # Arguments
+    /// channel: The channel to reset.  Must be a valid #mention in order to
+    ///          work
     Unmark(ChannelId),
 }
 
@@ -42,10 +65,13 @@ pub enum ChannelCommand {
 #[derive(Docbot, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ChannelMode {
     /// (disabled|none)
+    /// Do not allow the bot to operate in this channel
     Disabled,
     /// (announcements|broadcast)
+    /// Disable responding to commands, send announcements in this channel
     Announcements,
     /// (commands|command-only)
+    /// Assume any messages sent in this channel are commands for the bot
     Commands,
 }
 

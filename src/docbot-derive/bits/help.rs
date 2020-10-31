@@ -83,13 +83,29 @@ fn emit_usage(docs: &CommandDocs) -> TokenStream {
 }
 
 fn emit_desc(docs: &CommandDocs) -> TokenStream {
-    let summary = Literal::string(&docs.summary);
-    let args = docs.args.iter().map(|(name, desc)| {
+    let summary = docs.summary.as_ref().map_or_else(
+        || quote_spanned! { docs.span => None },
+        |summary| {
+            let summary = Literal::string(&summary);
+
+            quote_spanned! { docs.span => Some(#summary) }
+        },
+    );
+
+    let args = docs.args.iter().map(|(name, required, desc)| {
         let name = Literal::string(&name);
+        let required = emit_bool(*required);
         let desc = Literal::string(&desc);
 
-        quote_spanned! { docs.span => (#name, #desc) }
+        quote_spanned! { docs.span =>
+            ::docbot::ArgumentDesc {
+                name: #name,
+                is_required: #required,
+                desc: #desc,
+            }
+        }
     });
+
     let examples = docs.examples.as_ref().map_or_else(
         || quote_spanned! { docs.span => None },
         |examples| {

@@ -86,7 +86,7 @@ async fn run() -> Result<()> {
             FMT_REGEX.replace_all(
                 include_str!("motd.txt"),
                 if atty::is(Stream::Stdout) {
-                    |c: &Captures| format!("\x1b[{}m", c.get(1).unwrap().as_str())
+                    |c: &Captures| format!("\x1b[{}m", &c[1])
                 } else {
                     |_: &Captures| String::new()
                 }

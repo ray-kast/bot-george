@@ -12,24 +12,26 @@ pub enum RestArg {
 }
 
 #[derive(Clone, Debug)]
-pub struct CommandSyntax {
+pub struct CommandUsage {
     pub ids: Vec<String>,
     pub required: Vec<String>,
     pub optional: Vec<String>,
     pub rest: RestArg,
+    pub desc: String,
 }
 
 #[derive(Debug)]
 pub struct CommandDocs {
     pub span: Span,
-    pub syntax: CommandSyntax,
-    pub help: String,
-    pub argument_help: Vec<(String, String)>,
+    pub usage: CommandUsage,
+    pub summary: String,
+    pub args: Vec<(String, String)>,
+    pub examples: Option<String>,
 }
 
 pub struct CommandSetDocs {
     pub span: Span,
-    pub help: String,
+    pub summary: String,
 }
 
 pub trait ParseDocs: Sized {
@@ -48,7 +50,7 @@ lazy_static! {
     static ref TRAILING_RE: Regex = Regex::new(r"\S").unwrap();
 }
 
-fn parse_usage_line((input, span): (String, Span)) -> Result<CommandSyntax> {
+fn parse_usage_line((input, span): (String, Span)) -> Result<CommandUsage> {
     let mut input = input.as_str();
 
     let ids_match = COMMAND_IDS_RE.captures(input).ok_or_else(|| {
@@ -93,11 +95,12 @@ fn parse_usage_line((input, span): (String, Span)) -> Result<CommandSyntax> {
         return Err((anyhow!("trailing string {:?}", input), span));
     }
 
-    Ok(CommandSyntax {
+    Ok(CommandUsage {
         ids,
         required,
         optional,
         rest,
+        desc: "".into(), // TODO
     })
 }
 
@@ -115,13 +118,14 @@ impl ParseDocs for CommandDocs {
 
         let mut docs = docs.into_iter();
 
-        let syntax = parse_usage_line(docs.next().unwrap())?;
+        let usage = parse_usage_line(docs.next().unwrap())?;
 
         Ok(Self {
             span,
-            syntax,
-            help: "".into(),       // TODO
-            argument_help: vec![], // TODO
+            usage,
+            summary: "".into(), // TODO
+            args: vec![],       // TODO
+            examples: None,     // TODO
         })
     }
 
@@ -130,20 +134,22 @@ impl ParseDocs for CommandDocs {
 
 impl ParseDocs for CommandSetDocs {
     fn parse_docs(docs: Vec<(String, Span)>) -> Result<Self> {
-        let span = docs
-            .iter()
-            .map(|(_, s)| s)
-            .fold(None, |prev, curr| match prev {
-                None => Some(Some(*curr)),
-                Some(p) => Some(p.and_then(|p| p.join(*curr))),
-            })
-            .unwrap()
-            .unwrap();
+        let (summary, span) = docs.iter().fold(
+            (String::new(), None),
+            |(summary, span), (curr_summary, curr_span)| {
+                (
+                    format!("{}\n{}", summary, curr_summary),
+                    match span {
+                        None => Some(Some(*curr_span)),
+                        Some(p) => Some(p.and_then(|p| p.join(*curr_span))),
+                    },
+                )
+            },
+        );
+        let summary = summary.trim().into();
+        let span = span.flatten().unwrap();
 
-        Ok(Self {
-            span,
-            help: "".into(), // TODO
-        })
+        Ok(Self { span, summary })
     }
 
     fn no_docs() -> Result<Self, anyhow::Error> {

@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Context;
 use diesel::{prelude::*, result::Error as DieselError};
-use docbot::Docbot;
+use docbot::{prelude::*, HelpTopic};
 use serenity::model::id::{ChannelId, GuildId, UserId};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -52,7 +52,7 @@ pub enum ChannelMode {
 pub type ChannelCommandResult<T> = Result<T, ChannelCommandError>;
 
 pub enum ChannelCommandOk {
-    Help(()),
+    Help(&'static HelpTopic),
     List(()),
     ShowAll {
         default: ChannelMode,
@@ -105,7 +105,7 @@ pub fn execute(
     let get_guild = || guild.ok_or(ChannelCommandError::GuildRequired);
 
     Ok(match command {
-        ChannelCommand::Help(_topic) => ChannelCommandOk::Help(todo!()),
+        ChannelCommand::Help(topic) => ChannelCommandOk::Help(ChannelCommand::help(topic)),
         ChannelCommand::List => ChannelCommandOk::List(todo!()),
         ChannelCommand::Show(_target) => todo!(),
         ChannelCommand::Default(_mode) => todo!(),

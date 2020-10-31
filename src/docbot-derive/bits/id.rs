@@ -49,12 +49,15 @@ fn bits<'a>(
     let get_fn;
 
     if match input.commands {
-        Commands::Struct(Command {
-            fields: Fields::Unit,
-            ..
-        }) => true,
+        Commands::Struct(
+            _,
+            Command {
+                fields: Fields::Unit,
+                ..
+            },
+        ) => true,
         Commands::Struct(..) => false,
-        Commands::Enum(ref vars) => vars
+        Commands::Enum(_, ref vars) => vars
             .iter()
             .all(|v| matches!(v.command.fields, Fields::Unit)),
     } {
@@ -75,7 +78,7 @@ fn bits<'a>(
                 data = quote_spanned! { input.span => struct #ty; };
                 get_fn = quote_spanned! { input.span => #ty };
             },
-            Commands::Enum(ref vars) => {
+            Commands::Enum(_, ref vars) => {
                 let id_vars = vars.iter().map(|CommandVariant { span, ident, .. }| {
                     let doc = Literal::string(&format!("Identifier for {}::{}", input.ty, ident));
 
@@ -114,8 +117,8 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
     let parse_iter = Ident::new("__iter", input.span);
 
     let lexer = match input.commands {
-        Commands::Struct(Command { ref docs, .. }) => {
-            Trie::new(docs.syntax.ids.iter().map(|i| (i, ())))
+        Commands::Struct(_, Command { ref docs, .. }) => {
+            Trie::new(docs.usage.ids.iter().map(|i| (i, ())))
                 .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
                 .root()
                 .to_lexer(
@@ -126,9 +129,9 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
                     parse_resolve_ambiguous,
                 )
         },
-        Commands::Enum(ref vars) => Trie::new(
+        Commands::Enum(_, ref vars) => Trie::new(
             vars.iter()
-                .flat_map(|v| v.command.docs.syntax.ids.iter().map(move |i| (i, v.ident))),
+                .flat_map(|v| v.command.docs.usage.ids.iter().map(move |i| (i, v.ident))),
         )
         .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
         .root()
@@ -142,14 +145,14 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
     };
 
     let display_arms = match input.commands {
-        Commands::Struct(Command { ref docs, .. }) => {
-            let value = Literal::string(&docs.syntax.ids[0]);
+        Commands::Struct(_, Command { ref docs, .. }) => {
+            let value = Literal::string(&docs.usage.ids[0]);
             vec![quote_spanned! { input.span => Self => #value }]
         },
-        Commands::Enum(ref vars) => vars
+        Commands::Enum(_, ref vars) => vars
             .iter()
             .map(|CommandVariant { ident, command, .. }| {
-                let value = Literal::string(&command.docs.syntax.ids[0]);
+                let value = Literal::string(&command.docs.usage.ids[0]);
                 quote_spanned! { input.span => Self::#ident => #value }
             })
             .collect(),

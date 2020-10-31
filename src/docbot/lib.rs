@@ -65,7 +65,57 @@ pub trait Command: Sized {
     fn id(&self) -> Self::Id;
 }
 
+/// Usage description for an argument
+#[derive(Debug, Clone)]
+pub struct ArgumentUsage {
+    /// The name of the argument
+    pub name: &'static str,
+    /// Whether the argument is required
+    pub is_required: bool,
+    /// Whether the argument is a rest parameter
+    pub is_rest: bool,
+}
+
+/// Usage description for a command
+#[derive(Debug, Clone)]
+pub struct CommandUsage {
+    /// The possible IDs of this command
+    pub ids: &'static [&'static str],
+    /// Usage descriptions for this command's arguments
+    pub args: &'static [ArgumentUsage],
+    /// A short description
+    pub desc: &'static str,
+}
+
+/// Detailed description of a command
+#[derive(Debug, Clone)]
+pub struct CommandDesc {
+    /// A detailed summary of the command's behavior
+    pub summary: &'static str,
+    /// Descriptions of the command's arguments
+    pub args: &'static [(&'static str, &'static str)],
+    /// Example uses of the command
+    pub examples: Option<&'static str>,
+}
+
+/// A generic help topic
+#[derive(Debug, Clone)]
+pub enum HelpTopic {
+    /// A help topic referring to a single command
+    Command(CommandUsage, CommandDesc),
+    /// A help topic referring to a set of commands, prefaced by a summary
+    CommandSet(&'static str, &'static [CommandUsage]),
+    /// A custom help topic
+    Custom(&'static str),
+}
+
+/// A command with associated help topics
+pub trait Help: Command {
+    /// Retrieve the help topic corresponding to the given ID.
+    fn help(topic: Option<Self::Id>) -> &'static HelpTopic;
+}
+
 /// Common traits and types used with this crate
 pub mod prelude {
-    pub use super::{Command, Docbot};
+    pub use super::{Command, Docbot, Help};
 }

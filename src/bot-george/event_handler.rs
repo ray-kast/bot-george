@@ -1,11 +1,14 @@
 use crate::{
     bot::{channels, roles},
     commands,
+    commands::BaseCommand,
     db::DbPool,
     error::Result,
+    util::MessageBuilderExt,
 };
 use anyhow::Context as _;
 use dispose::defer;
+use docbot::{prelude::*, ArgumentUsage, CommandUsage, HelpTopic};
 use lazy_static::lazy_static;
 use log::{error, info};
 use regex::Regex;
@@ -19,6 +22,7 @@ use serenity::{
         id::{ChannelId, UserId},
         user::OnlineStatus,
     },
+    utils::MessageBuilder,
 };
 use std::{
     fmt::{Display, Write},
@@ -102,11 +106,25 @@ impl Handler {
         ret
     }
 
+    async fn send_err_message(chan: ChannelId, http: impl AsRef<Http>, err: anyhow::Error) {
+        error!("{:?}", err);
+        chan.say(
+            http,
+            MessageBuilder::new()
+                .push("**ERROR:**")
+                .push_codeblock_safe(format!("{:?}", err), None),
+        )
+        .await
+        .map_err(|e| error!("error while reporting error: {:?}", e))
+        .ok();
+    }
+
     async fn send_guild_required(channel_id: ChannelId, http: impl AsRef<Http>) -> Result<()> {
         channel_id
-            .send_message(http, |m| {
-                m.content("**ERROR:** This command cannot be used in a DM channel.")
-            })
+            .say(
+                http,
+                "**ERROR:** This command cannot be used in a DM channel.",
+            )
             .await
             .context("failed to send guild ID error message")?;
 
@@ -122,32 +140,167 @@ impl Handler {
         use roles::NoPermissionError::{Add, Remove, Show};
 
         channel_id
-            .send_message(http, |m| {
-                m.content(format!(
+            .say(
+                http,
+                format!(
                     "**ERROR:** You do not have permission to {}",
                     match err {
                         Show => "show assigned roles".into(),
                         Add(r) => format!("add the role **{}**", r),
                         Remove(r) => format!("remove the role **{}**", r),
                     }
-                ))
-            })
+                ),
+            )
             .await
             .context("failed to send error message")?;
 
         Ok(())
     }
 
-    async fn send_err_message(chan: ChannelId, http: impl AsRef<Http>, err: anyhow::Error) {
-        error!("{:?}", err);
-        chan.send_message(http, |m| m.content(format!("**ERROR:**\n```{:?}```", err)))
+    async fn send_help(
+        channel_id: ChannelId,
+        http: impl AsRef<Http>,
+        help: &HelpTopic,
+    ) -> Result<()>
+    {
+        fn format_arg_usage(usage: &ArgumentUsage) -> String {
+            let mut ret = String::new();
+
+            ret.push(if usage.is_required { '<' } else { '[' });
+            ret.write_str(usage.name).unwrap();
+            if usage.is_rest {
+                ret.write_str("...").unwrap();
+            }
+            ret.push(if usage.is_required { '>' } else { ']' });
+
+            ret
+        }
+
+        fn format_usage(usage: &CommandUsage) -> String {
+            let mut ret = Vec::new();
+
+            {
+                let mut ids = String::new();
+
+                lazy_static! {
+                    static ref NONWORD_RE: Regex = Regex::new(r"\s").unwrap();
+                }
+
+                let paren = usage.ids.len() != 1 || NONWORD_RE.is_match(usage.ids.first().unwrap());
+
+                if paren {
+                    ids.push('(');
+                }
+
+                write!(ids, "{}", usage.ids.join("|")).unwrap();
+
+                if paren {
+                    ids.push(')');
+                }
+
+                ret.push(ids);
+            }
+
+            ret.extend(usage.args.iter().map(|a| format_arg_usage(a)));
+
+            ret.join(" ")
+        }
+
+        channel_id
+            .send_message(http, |msg| match help {
+                HelpTopic::Command(u, d) => msg.content(
+                    MessageBuilder::new()
+                        .push("**Usage:** ")
+                        .push_line(format_usage(u))
+                        .push_mono_safer(format!("{:?}", d)),
+                ),
+                HelpTopic::CommandSet(s, c) => {
+                    msg.content(s);
+
+                    // TODO
+                    msg
+                },
+                HelpTopic::Custom(s) => msg.content(s),
+            })
             .await
-            .map_err(|e| error!("error while reporting error: {:?}", e))
-            .ok();
+            .context("failed to send help")?;
+
+        Ok(())
+    }
+
+    fn format_id_error(err: docbot::IdParseError) -> String {
+        use docbot::IdParseError::{Ambiguous, NoMatch};
+
+        let mut b = MessageBuilder::new();
+
+        match err {
+            // TODO: did-you-mean
+            NoMatch(s) => b.push("Not sure what you mean by ").push_mono_safer(s),
+            Ambiguous(v, i) => {
+                b.push("Not sure what you mean by ")
+                    .push_mono_safer(i)
+                    .push(", could be ");
+
+                for (i, v) in v.iter().enumerate() {
+                    if i != 0 {
+                        b.push(", ");
+                    }
+
+                    b.push_mono_safer(v);
+                }
+
+                &mut b
+            },
+        }
+        .build()
+    }
+
+    fn format_cmd_error(err: docbot::CommandParseError) -> String {
+        use docbot::CommandParseError::{
+            BadConvert, BadId, MissingRequired, NoInput, Subcommand, Trailing,
+        };
+
+        let mut b = MessageBuilder::new();
+
+        // TODO: recommend running a help command
+
+        match err {
+            NoInput => b.push("Expected a command, got nothing"),
+            BadId(e) => b.push(Self::format_id_error(e)),
+            MissingRequired(a) => b.push("Missing required argument ").push_mono_safer(a),
+            BadConvert(a, e) => {
+                enum Downcast {
+                    Cmd(docbot::CommandParseError),
+                    Id(docbot::IdParseError),
+                    Other(anyhow::Error),
+                }
+
+                b.push("Failed to process argument ")
+                    .push_mono_safer(a)
+                    .push(": ");
+
+                match e.downcast().map_or_else(
+                    |e| e.downcast().map_or_else(Downcast::Other, Downcast::Id),
+                    Downcast::Cmd,
+                ) {
+                    Downcast::Cmd(e) => b.push(Self::format_cmd_error(e)),
+                    Downcast::Id(e) => b.push(Self::format_id_error(e)),
+                    Downcast::Other(e) => b.push_safe(e),
+                }
+            },
+            Trailing(s) => b
+                .push("Too many arguments given (starting with ")
+                .push_mono_safer(s)
+                .push(")"),
+            Subcommand(e) => b
+                .push("Subcommand failed: ")
+                .push(Self::format_cmd_error(*e)),
+        }
+        .build()
     }
 
     async fn handle_command<S: AsRef<str>>(&self, s: S, ctx: Context, msg: &Message) -> Result<()> {
-        use crate::commands::BaseCommand::{Channel, Help, Modmail, Role, Schedule};
+        use BaseCommand::{Channel, Help, Modmail, Role, Schedule};
 
         let chan = msg.channel_id;
         let http = Arc::clone(&ctx.http);
@@ -158,21 +311,29 @@ impl Handler {
                     runtime::Builder::new()
                         .enable_all()
                         .basic_scheduler()
-                        .max_threads(1)
                         .build()
                         .unwrap()
-                        .block_on(chan.send_message(http, |m| {
-                            m.content("**ERROR:** thread panicked while servicing your request")
-                        }))
+                        .block_on(chan.say(
+                            http,
+                            "**ERROR:** thread panicked while servicing your request",
+                        ))
                         .ok()
                 });
             }
         });
 
-        let cmd = commands::parse_base(s).context("failed to parse command")?;
+        let cmd = match commands::parse_base(s) {
+            Ok(c) => c,
+            Err(e) => {
+                chan.say(ctx, format!("**ERROR:** {}", Self::format_cmd_error(e)))
+                    .await
+                    .context("failed to send command parse error")?;
+                return Ok(());
+            },
+        };
 
         match cmd {
-            Help(_topic) => todo!(),
+            Help(topic) => Self::send_help(chan, ctx, BaseCommand::help(topic)).await?,
             Role(role_cmd) => {
                 use roles::{
                     RoleCommandError::{GuildRequired, NoPermission, Other},
@@ -186,31 +347,25 @@ impl Handler {
                     &self.pool,
                     self.superuser,
                 ) {
-                    Ok(Help(())) => todo!(),
+                    Ok(Help(topic)) => Self::send_help(chan, ctx, topic).await?,
                     Ok(List(())) => todo!(),
                     Ok(ShowAll(_map)) => todo!(),
                     Ok(ShowOne(_user, _roles)) => todo!(),
                     Ok(Added(n)) => {
                         msg.channel_id
-                            .send_message(&ctx, |m| {
-                                m.content(format!(
-                                    "Added {} role{}.",
-                                    n,
-                                    if n == 1 { "" } else { "s" }
-                                ))
-                            })
+                            .say(
+                                &ctx,
+                                format!("Added {} role{}.", n, if n == 1 { "" } else { "s" }),
+                            )
                             .await
                             .context("failed to send success message")?;
                     },
                     Ok(Removed(n)) => {
                         msg.channel_id
-                            .send_message(&ctx, |m| {
-                                m.content(format!(
-                                    "Removed {} role{}.",
-                                    n,
-                                    if n == 1 { "" } else { "s" }
-                                ))
-                            })
+                            .say(
+                                &ctx,
+                                format!("Removed {} role{}.", n, if n == 1 { "" } else { "s" }),
+                            )
                             .await
                             .context("failed to send success message")?;
                     },
@@ -234,7 +389,7 @@ impl Handler {
                     &self.pool,
                     self.superuser,
                 ) {
-                    Ok(Help(())) => todo!(),
+                    Ok(Help(topic)) => Self::send_help(chan, ctx, topic).await?,
                     Ok(List(())) => todo!(),
                     Ok(ShowAll { .. }) => todo!(),
                     Ok(ShowOne { .. }) => todo!(),

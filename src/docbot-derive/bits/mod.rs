@@ -1,3 +1,4 @@
+pub mod help;
 pub mod id;
 pub mod parse;
 
@@ -6,9 +7,10 @@ pub mod inputs {
     use anyhow::anyhow;
     use proc_macro2::TokenStream;
     use quote::quote_spanned;
+    use std::rc::Rc;
     use syn::{spanned::Spanned, Data, DeriveInput};
 
-    pub use crate::docs::CommandDocs;
+    pub use crate::docs::{CommandDocs, CommandSetDocs, CommandUsage, RestArg};
     pub use proc_macro2::Span;
     pub use syn::{Fields, Generics, Ident, Variant, Visibility};
 
@@ -18,17 +20,16 @@ pub mod inputs {
         pub ty: &'a Ident,
         pub generics: &'a Generics,
 
-        pub outer_docs: (),
         pub commands: Commands<'a>,
     }
 
     pub enum Commands<'a> {
-        Struct(Command<'a>),
-        Enum(Vec<CommandVariant<'a>>),
+        Struct(Rc<CommandDocs>, Command<'a>),
+        Enum(CommandSetDocs, Vec<CommandVariant<'a>>),
     }
 
     pub struct Command<'a> {
-        pub docs: CommandDocs,
+        pub docs: Rc<CommandDocs>,
         pub fields: &'a Fields,
     }
 
@@ -41,11 +42,19 @@ pub mod inputs {
 
     pub fn assemble(input: &DeriveInput) -> Result<InputData> {
         let commands = match input.data {
-            Data::Struct(ref s) => Commands::Struct(Command {
-                docs: attrs::parse_outer(&input.attrs, input.span())?,
-                fields: &s.fields,
-            }),
+            Data::Struct(ref s) => {
+                let docs = Rc::new(attrs::parse_outer(&input.attrs, input.span())?);
+
+                Commands::Struct(
+                    Rc::clone(&docs),
+                    Command {
+                        docs,
+                        fields: &s.fields,
+                    },
+                )
+            },
             Data::Enum(ref e) => Commands::Enum(
+                attrs::parse_outer(&input.attrs, input.span())?,
                 e.variants
                     .iter()
                     .map(|v| {
@@ -64,7 +73,7 @@ pub mod inputs {
                                 }
                             },
                             command: Command {
-                                docs: attrs::parse_variant(&v.attrs, v.span())?,
+                                docs: Rc::new(attrs::parse_variant(&v.attrs, v.span())?),
                                 fields: &v.fields,
                             },
                             span: v.span(),
@@ -83,7 +92,6 @@ pub mod inputs {
             ty: &input.ident,
             generics: &input.generics,
 
-            outer_docs: (),
             commands,
         })
     }

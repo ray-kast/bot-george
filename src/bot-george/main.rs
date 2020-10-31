@@ -21,6 +21,7 @@ mod logging;
 pub mod models;
 #[allow(missing_docs)]
 pub mod schema;
+pub mod util;
 
 use anyhow::Context;
 use dotenv::dotenv;

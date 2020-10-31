@@ -2,7 +2,6 @@
 use super::{id::IdParts, inputs::*};
 use crate::{
     attrs,
-    docs::{CommandSyntax, RestArg},
     opts::FieldOpts,
     Result,
 };
@@ -12,8 +11,7 @@ use quote::quote_spanned;
 use std::collections::HashMap;
 
 pub struct ParseParts {
-    pub fun: TokenStream,
-    pub iter: Ident,
+    pub items: TokenStream,
 }
 
 enum FieldMode {
@@ -51,16 +49,16 @@ fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident) -> Token
 
 fn field_info<'a>(
     span: Span,
-    syntax: &'a CommandSyntax,
+    usage: &'a CommandUsage,
     fields: &'a Fields,
 ) -> Result<Vec<FieldInfo<'a>>>
 {
-    let args = syntax
+    let args = usage
         .required
         .iter()
         .map(|n| (FieldMode::Required, n))
-        .chain(syntax.optional.iter().map(|n| (FieldMode::Optional, n)))
-        .chain(match syntax.rest {
+        .chain(usage.optional.iter().map(|n| (FieldMode::Optional, n)))
+        .chain(match usage.rest {
             RestArg::None => None,
             RestArg::Optional(ref n) => Some((FieldMode::RestOptional, n)),
             RestArg::Required(ref n) => Some((FieldMode::RestRequired, n)),
@@ -115,7 +113,7 @@ fn ctor_fields(
     iter: &Ident,
 ) -> Result<TokenStream>
 {
-    let info = field_info(span, &docs.syntax, fields)?;
+    let info = field_info(span, &docs.usage, fields)?;
 
     let args = info.into_iter().map(|FieldInfo { opts, name, mode }| {
         (
@@ -186,7 +184,7 @@ fn ctor_fields(
         },
     };
 
-    Ok(if let RestArg::None = docs.syntax.rest {
+    Ok(if let RestArg::None = docs.usage.rest {
         let check = quote_spanned! { span =>
             if let Some(__trail) = #iter.next() {
                 return Err(::docbot::CommandParseError::Trailing(__trail.as_ref().into()));
@@ -210,7 +208,7 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
     let id_ty = &id_parts.ty;
 
     let ctors: Vec<_> = match input.commands {
-        Commands::Struct(ref cmd) => {
+        Commands::Struct(_, ref cmd) => {
             let ctor = ctor_fields(
                 input.span,
                 cmd,
@@ -220,7 +218,7 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
 
             vec![quote_spanned! { input.span => #id_ty => #ctor }]
         },
-        Commands::Enum(ref vars) => vars
+        Commands::Enum(_, ref vars) => vars
             .iter()
             .map(
                 |CommandVariant {
@@ -242,18 +240,35 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
             .collect::<Result<_>>()?,
     };
 
-    let fun = quote_spanned! { input.span =>
-        let mut #iter = #iter.into_iter().fuse();
+    // Quote variables
+    let name = input.ty;
+    let (impl_vars, ty_vars, where_clause) = input.generics.split_for_impl();
+    let id_ty = &id_parts.ty;
+    let id_get_fn = &id_parts.get_fn;
 
-        let __id: #id_ty = match #iter.next() {
-            Some(__str) => __str.as_ref().parse()?,
-            None => return Err(::docbot::CommandParseError::NoInput),
-        };
+    let items = quote_spanned! { input.span =>
+        impl #impl_vars ::docbot::Command for #name #ty_vars #where_clause {
+            type Id = #id_ty;
 
-        Ok(match __id {
-            #(#ctors),*
-        })
+            fn parse<
+                I: IntoIterator<Item = S>,
+                S: AsRef<str>,
+            >(#iter: I) -> ::std::result::Result<Self, ::docbot::CommandParseError> {
+                let mut #iter = #iter.into_iter().fuse();
+
+                let __id: #id_ty = match #iter.next() {
+                    Some(__str) => __str.as_ref().parse()?,
+                    None => return Err(::docbot::CommandParseError::NoInput),
+                };
+
+                Ok(match __id {
+                    #(#ctors),*
+                })
+            }
+
+            fn id(&self) -> Self::Id { #id_get_fn }
+        }
     };
 
-    Ok(ParseParts { fun, iter })
+    Ok(ParseParts { items })
 }

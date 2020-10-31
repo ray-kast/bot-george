@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use diesel::{prelude::*, result::Error as DieselError};
-use docbot::Docbot;
+use docbot::{prelude::*, HelpTopic};
 use log::{error, warn};
 use serenity::model::id::{GuildId, UserId};
 use std::{
@@ -54,7 +54,7 @@ pub enum Role {
 pub type RoleCommandResult<T> = Result<T, RoleCommandError>;
 
 pub enum RoleCommandOk {
-    Help(()),
+    Help(&'static HelpTopic),
     List(()),
     ShowAll(HashMap<DisplayUser, BTreeSet<Role>>),
     ShowOne(DisplayUser, BTreeSet<Role>),
@@ -247,7 +247,7 @@ pub fn execute(
     };
 
     Ok(match command {
-        RoleCommand::Help(_topic) => RoleCommandOk::Help(todo!()),
+        RoleCommand::Help(topic) => RoleCommandOk::Help(RoleCommand::help(topic)),
         RoleCommand::List => RoleCommandOk::List(todo!()),
         RoleCommand::Show(target) => {
             let guild = get_guild()?;

@@ -11,7 +11,7 @@ mod docs;
 mod opts;
 mod trie;
 
-use bits::{id::IdParts, parse::ParseParts};
+use bits::{help::HelpParts, id::IdParts, parse::ParseParts};
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
@@ -40,35 +40,18 @@ fn derive_docbot_impl(input: DeriveInput) -> Result<TokenStream> {
     let inputs = bits::inputs::assemble(&input)?;
     let id_parts = bits::id::emit(&inputs)?;
     let parse_parts = bits::parse::emit(&inputs, &id_parts)?;
+    let help_parts = bits::help::emit(&inputs)?;
 
     // Quote variables
     let IdParts {
-        ty: id_ty,
-        items: id_items,
-        get_fn: id_get_fn,
+        items: id_items, ..
     } = id_parts;
-    let ParseParts {
-        fun: parse_fn,
-        iter: parse_iter,
-    } = parse_parts;
-    let span = input.span();
-    let name = input.ident;
-    let (impl_vars, ty_vars, where_clause) = input.generics.split_for_impl();
+    let ParseParts { items: parse_items } = parse_parts;
+    let HelpParts { items: help_items } = help_parts;
 
-    Ok(quote_spanned! { span =>
+    Ok(quote_spanned! { input.span() =>
         #id_items
-
-        impl #impl_vars ::docbot::Command for #name #ty_vars #where_clause {
-            type Id = #id_ty;
-
-            fn parse<
-                I: IntoIterator<Item = S>,
-                S: AsRef<str>,
-            >(#parse_iter: I) -> ::std::result::Result<Self, ::docbot::CommandParseError> {
-                #parse_fn
-            }
-
-            fn id(&self) -> Self::Id { #id_get_fn }
-        }
+        #parse_items
+        #help_items
     })
 }

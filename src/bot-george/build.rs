@@ -23,6 +23,7 @@ fn main() {
 
     if rev.status.success() && status.status.success() {
         println!("cargo:rerun-if-changed=../../.git/index");
+        println!("cargo:rerun-if-changed=../");
 
         println!(
             "cargo:rustc-env=GIT_HEAD={}{}",

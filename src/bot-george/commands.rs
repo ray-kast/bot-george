@@ -67,7 +67,6 @@ lazy_static! {
     static ref USER_MENTION_RE: Regex = Regex::new(r"^\s*<@!(\d+)>\s*$").unwrap();
 }
 
-// TODO: make command matching case-insensitive?
 /// Parse a base command from a string
 /// # Errors
 /// Returns an error if the command parser failed to find a matching command for

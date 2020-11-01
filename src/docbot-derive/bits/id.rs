@@ -120,7 +120,7 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
 
     let lexer = match input.commands {
         Commands::Struct(_, Command { ref docs, .. }) => {
-            Trie::new(docs.usage.ids.iter().map(|i| (i, ())))
+            Trie::new(docs.usage.ids.iter().map(|i| (i.to_lowercase(), ())))
                 .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
                 .root()
                 .to_lexer(
@@ -131,10 +131,14 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
                     parse_resolve_ambiguous,
                 )
         },
-        Commands::Enum(_, ref vars) => Trie::new(
-            vars.iter()
-                .flat_map(|v| v.command.docs.usage.ids.iter().map(move |i| (i, v.ident))),
-        )
+        Commands::Enum(_, ref vars) => Trie::new(vars.iter().flat_map(|v| {
+            v.command
+                .docs
+                .usage
+                .ids
+                .iter()
+                .map(move |i| (i.to_lowercase(), v.ident))
+        }))
         .map_err(|e| (e.context("failed to construct command lexer"), input.span))?
         .root()
         .to_lexer(
@@ -186,7 +190,8 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
             type Err = ::docbot::IdParseError;
 
             fn from_str(#parse_s: &str) -> Result<Self, Self::Err> {
-                let mut #parse_iter = #parse_s.chars();
+                let __to_lower = #parse_s.to_lowercase();
+                let mut #parse_iter = __to_lower.chars();
 
                 #lexer
             }

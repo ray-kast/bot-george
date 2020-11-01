@@ -4,7 +4,7 @@
 
 //! Create a chatbot command interface using a docopt-like API
 
-use std::convert::Infallible;
+use std::{convert::Infallible, fmt::Display, str::FromStr};
 use thiserror::Error;
 
 /// Error type for failures when parsing a command ID
@@ -12,7 +12,7 @@ use thiserror::Error;
 pub enum IdParseError {
     /// No IDs matched the given string
     #[error("no ID match for {0:?}")]
-    NoMatch(String),
+    NoMatch(String, &'static [&'static str]),
     /// Multiple IDs could match the given string
     ///
     /// Usually a result of specifying too few characters
@@ -39,8 +39,8 @@ pub enum CommandParseError {
     #[error("trailing argument {0:?}")]
     Trailing(String),
     /// A subcommand failed to parse
-    #[error("failed to parse subcommand")]
-    Subcommand(Box<CommandParseError>),
+    #[error("failed to parse subcommand {0:?}")]
+    Subcommand(&'static str, Box<CommandParseError>),
 }
 
 impl From<Infallible> for CommandParseError {
@@ -63,6 +63,15 @@ pub trait Command: Sized {
 
     /// Return an ID uniquely describing the base type of this command.
     fn id(&self) -> Self::Id;
+}
+
+/// A command ID, convertible to and from a string
+pub trait CommandId: FromStr + Display {
+    /// List all possible valid names that can be parsed, including aliases
+    fn names() -> &'static [&'static str];
+
+    /// Get the canonical name for an ID
+    fn to_str(&self) -> &'static str;
 }
 
 /// Usage description for an argument
@@ -114,8 +123,9 @@ pub struct CommandDesc {
 pub enum HelpTopic {
     /// A help topic referring to a single command
     Command(CommandUsage, CommandDesc),
-    /// A help topic referring to a set of commands, prefaced by a summary
-    CommandSet(&'static str, &'static [CommandUsage]),
+    /// A help topic referring to a set of commands, prefaced by an optional
+    /// summary
+    CommandSet(Option<&'static str>, &'static [CommandUsage]),
     /// A custom help topic
     Custom(&'static str),
 }
@@ -128,5 +138,5 @@ pub trait Help: Command {
 
 /// Common traits and types used with this crate
 pub mod prelude {
-    pub use super::{Command, Docbot, Help};
+    pub use super::{Command, CommandId, Docbot, Help};
 }

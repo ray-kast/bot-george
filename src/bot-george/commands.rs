@@ -14,7 +14,7 @@ use regex::Regex;
 pub enum BaseCommand {
     /// help [command]
     /// Display information about the bot, or get help on a particular command
-    /// 
+    ///
     /// # Arguments
     /// command: The name of a command to get info for
     Help(Option<BaseCommandId>),
@@ -25,21 +25,21 @@ pub enum BaseCommand {
 
     /// (role|roles) <subcommand...>
     /// Manage bot-specific roles for users
-    /// 
+    ///
     /// # Arguments
     /// subcommand: The subcommand to run.  Run [`roles help`]() for more info
     Role(#[docbot(subcommand)] RoleCommand),
 
     /// channel <subcommand...>
     /// Manage channel-specific bot behavior
-    /// 
+    ///
     /// # Arguments
     /// subcommand: The subcommand to run.  Run [`channel help`]() for more info
     Channel(#[docbot(subcommand)] ChannelCommand),
 
     /// schedule <subcommand...>
     /// Manage scheduled announcements
-    /// 
+    ///
     /// # Arguments
     /// subcommand: The subcommand to run.  Run [`schedule help`]() for more
     ///             info
@@ -47,13 +47,13 @@ pub enum BaseCommand {
 
     /// (modmail|mm) <message...>
     /// Send a message to the moderators without any personal data attached
-    /// 
+    ///
     /// # Overview
     /// Send a message to the server moderators, where it can be read and
     /// replied to without any information identifying you being passed along by
     /// the bot.  **Note that Discord is not a secure medium.  We cannot take
     /// responsibility for how Discord handles your data.**
-    /// 
+    ///
     /// # Arguments
     /// message: The contents of the message to send.  Only this and an
     ///          anonymous ticket ID will be displayed in the sent message.

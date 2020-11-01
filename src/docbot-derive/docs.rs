@@ -32,7 +32,7 @@ pub struct CommandDocs {
 
 pub struct CommandSetDocs {
     pub span: Span,
-    pub summary: String,
+    pub summary: Option<String>,
 }
 
 pub trait ParseDocs: Sized {
@@ -339,13 +339,21 @@ impl ParseDocs for CommandSetDocs {
             summary.push_str(&par);
         }
 
-        let summary = summary.trim().into();
+        let summary = summary.trim();
+        let summary = if summary.is_empty() {
+            Some(summary.into())
+        } else {
+            None
+        };
 
         Ok(Self { span, summary })
     }
 
     fn no_docs() -> Result<Self, anyhow::Error> {
-        Err(anyhow!("missing doc comment for command set"))
+        Ok(Self {
+            span: Span::call_site(),
+            summary: None,
+        })
     }
 }
 

@@ -26,9 +26,9 @@ impl MessageBuilderExt for MessageBuilder {
         let content = content.to_string();
 
         if content.is_empty() {
-            self.push_mono_safe('\u{200c}')
+            self.push_mono_line_safe('\u{200c}')
         } else {
-            self.push_mono_safe(content)
+            self.push_mono_line_safe(content)
         }
     }
 }

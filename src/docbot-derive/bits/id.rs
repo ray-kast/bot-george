@@ -11,7 +11,9 @@ pub struct IdParts {
 }
 
 fn parse_no_match(span: Span, s: impl ToTokens) -> impl ToTokens {
-    quote_spanned! { span => Err(::docbot::IdParseError::NoMatch(#s.into())) }
+    quote_spanned! { span =>
+        Err(::docbot::IdParseError::NoMatch(#s.into(), <Self as ::docbot::CommandId>::names()))
+    }
 }
 
 fn parse_ambiguous(span: Span, s: impl ToTokens, values: Vec<&str>) -> impl ToTokens {
@@ -144,18 +146,31 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
         ),
     };
 
-    let display_arms = match input.commands {
+    let to_str_arms;
+    let names;
+
+    match input.commands {
         Commands::Struct(_, Command { ref docs, .. }) => {
             let value = Literal::string(&docs.usage.ids[0]);
-            vec![quote_spanned! { input.span => Self => #value }]
+            to_str_arms = vec![quote_spanned! { input.span => Self => #value }];
+
+            names = docs.usage.ids.clone();
         },
-        Commands::Enum(_, ref vars) => vars
-            .iter()
-            .map(|CommandVariant { ident, command, .. }| {
-                let value = Literal::string(&command.docs.usage.ids[0]);
-                quote_spanned! { input.span => Self::#ident => #value }
-            })
-            .collect(),
+        Commands::Enum(_, ref vars) => {
+            to_str_arms = vars
+                .iter()
+                .map(|CommandVariant { ident, command, .. }| {
+                    let value = Literal::string(&command.docs.usage.ids[0]);
+                    quote_spanned! { input.span => Self::#ident => #value }
+                })
+                .collect();
+
+            names = vars
+                .iter()
+                .flat_map(|v| v.command.docs.usage.ids.iter())
+                .cloned()
+                .collect();
+        },
     };
 
     // Quote variables
@@ -180,8 +195,18 @@ pub fn emit(input: &InputData) -> Result<IdParts> {
         impl #impl_vars ::std::fmt::Display for #ty #ty_vars #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 f.write_str(match self {
-                    #(#display_arms),*
+                    #(#to_str_arms),*
                 })
+            }
+        }
+
+        impl #impl_vars ::docbot::CommandId for #ty #ty_vars #where_clause {
+            fn names() -> &'static [&'static str] { &[#(#names),*] }
+
+            fn to_str(&self) -> &'static str {
+                match self {
+                    #(#to_str_arms),*
+                }
             }
         }
     };

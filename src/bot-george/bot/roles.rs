@@ -51,7 +51,7 @@ pub enum RoleCommand {
 
     /// (remove|rm) <user> <roles...>
     /// Remove one or more roles from a user
-    /// 
+    ///
     /// # Arguments
     /// user: The user to remove roles from.  Must be a valid user mention in
     ///       order to work
@@ -60,7 +60,6 @@ pub enum RoleCommand {
     Remove(UserId, BTreeSet<Role>),
 }
 
-/// TODO: remove this
 #[derive(Docbot, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
     /// admin
@@ -75,7 +74,7 @@ pub type RoleCommandResult<T> = Result<T, RoleCommandError>;
 
 pub enum RoleCommandOk {
     Help(&'static HelpTopic),
-    List(()),
+    List(&'static HelpTopic),
     ShowAll(HashMap<DisplayUser, BTreeSet<Role>>),
     ShowOne(DisplayUser, BTreeSet<Role>),
     Added(usize),
@@ -268,7 +267,7 @@ pub fn execute(
 
     Ok(match command {
         RoleCommand::Help(topic) => RoleCommandOk::Help(RoleCommand::help(topic)),
-        RoleCommand::List => RoleCommandOk::List(todo!()),
+        RoleCommand::List => RoleCommandOk::List(Role::help(None)),
         RoleCommand::Show(target) => {
             let guild = get_guild()?;
             let (_, sender_roles) = get_sender(guild)?;

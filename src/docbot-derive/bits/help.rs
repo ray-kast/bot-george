@@ -140,7 +140,15 @@ pub fn emit(input: &InputData) -> Result<HelpParts> {
             topic_arms = vec![quote_spanned! { docs.span => Some(Self::Id) => &__GENERAL }];
         },
         Commands::Enum(ref docs, ref vars) => {
-            let summary = Literal::string(&docs.summary);
+            let summary = docs.summary.as_ref().map_or_else(
+                || quote_spanned! { docs.span => None },
+                |summary| {
+                    let summary = Literal::string(&summary);
+
+                    quote_spanned! { docs.span => Some(#summary) }
+                },
+            );
+
             let commands = vars.iter().map(
                 |CommandVariant {
                      command: Command { docs, .. },

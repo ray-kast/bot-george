@@ -1,10 +1,6 @@
 #[allow(clippy::wildcard_imports)]
 use super::{id::IdParts, inputs::*};
-use crate::{
-    attrs,
-    opts::FieldOpts,
-    Result,
-};
+use crate::{attrs, opts::FieldOpts, Result};
 use anyhow::anyhow;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
@@ -27,11 +23,11 @@ struct FieldInfo<'a> {
     mode: FieldMode,
 }
 
-fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident) -> TokenStream {
+fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident, id: &Ident) -> TokenStream {
     if opts.subcommand {
         quote_spanned! { span =>
             ::docbot::Command::parse(#iter).map_err(|e| {
-                ::docbot::CommandParseError::Subcommand(::std::boxed::Box::new(e))
+                ::docbot::CommandParseError::Subcommand(#id.to_str(), ::std::boxed::Box::new(e))
             })
         }
     } else {
@@ -111,6 +107,7 @@ fn ctor_fields(
     Command { docs, fields }: &Command,
     path: TokenStream,
     iter: &Ident,
+    id: &Ident,
 ) -> Result<TokenStream>
 {
     let info = field_info(span, &docs.usage, fields)?;
@@ -142,7 +139,7 @@ fn ctor_fields(
                 },
                 FieldMode::RestRequired => {
                     let peekable = Ident::new("__peek", span);
-                    let collected = collect_rest(span, &opts, name, &peekable);
+                    let collected = collect_rest(span, &opts, name, &peekable, id);
 
                     quote_spanned! { span =>
                         {
@@ -157,7 +154,7 @@ fn ctor_fields(
                     }
                 },
                 FieldMode::RestOptional => {
-                    let collected = collect_rest(span, &opts, name, iter);
+                    let collected = collect_rest(span, &opts, name, iter, id);
 
                     quote_spanned! { span => #collected? }
                 },
@@ -205,6 +202,7 @@ fn ctor_fields(
 
 pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
     let iter = Ident::new("__iter", input.span);
+    let id = Ident::new("__id", input.span);
     let id_ty = &id_parts.ty;
 
     let ctors: Vec<_> = match input.commands {
@@ -214,6 +212,7 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
                 cmd,
                 quote_spanned! { input.span => Self },
                 &iter,
+                &id,
             )?;
 
             vec![quote_spanned! { input.span => #id_ty => #ctor }]
@@ -232,6 +231,7 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
                         command,
                         quote_spanned! { *span => Self::#ident },
                         &iter,
+                        &id,
                     )?;
 
                     Ok(quote_spanned! { *span => #id_ty::#ident => #ctor })
@@ -243,7 +243,6 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
     // Quote variables
     let name = input.ty;
     let (impl_vars, ty_vars, where_clause) = input.generics.split_for_impl();
-    let id_ty = &id_parts.ty;
     let id_get_fn = &id_parts.get_fn;
 
     let items = quote_spanned! { input.span =>
@@ -256,12 +255,12 @@ pub fn emit(input: &InputData, id_parts: &IdParts) -> Result<ParseParts> {
             >(#iter: I) -> ::std::result::Result<Self, ::docbot::CommandParseError> {
                 let mut #iter = #iter.into_iter().fuse();
 
-                let __id: #id_ty = match #iter.next() {
+                let #id: #id_ty = match #iter.next() {
                     Some(__str) => __str.as_ref().parse()?,
                     None => return Err(::docbot::CommandParseError::NoInput),
                 };
 
-                Ok(match __id {
+                Ok(match #id {
                     #(#ctors),*
                 })
             }

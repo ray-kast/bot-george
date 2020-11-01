@@ -30,7 +30,7 @@ pub enum ChannelCommand {
     /// Show all channel modes, or list the mode of a given channel
     ///
     /// # Arguments
-    /// channel: The name of a channel to display the mode of.  Must be a valid 
+    /// channel: The name of a channel to display the mode of.  Must be a valid
     ///          #mention in order to work
     Show(Option<ChannelId>),
 
@@ -54,14 +54,13 @@ pub enum ChannelCommand {
     /// (unmark|clear|reset) <channel>
     /// Clear any channel-specific behavior for a channel, resetting it to the
     /// default
-    /// 
+    ///
     /// # Arguments
     /// channel: The channel to reset.  Must be a valid #mention in order to
     ///          work
     Unmark(ChannelId),
 }
 
-/// TODO: remove this
 #[derive(Docbot, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ChannelMode {
     /// (disabled|none)
@@ -79,7 +78,7 @@ pub type ChannelCommandResult<T> = Result<T, ChannelCommandError>;
 
 pub enum ChannelCommandOk {
     Help(&'static HelpTopic),
-    List(()),
+    List(&'static HelpTopic),
     ShowAll {
         default: ChannelMode,
         modes: HashMap<Channel, ChannelMode>,
@@ -132,7 +131,7 @@ pub fn execute(
 
     Ok(match command {
         ChannelCommand::Help(topic) => ChannelCommandOk::Help(ChannelCommand::help(topic)),
-        ChannelCommand::List => ChannelCommandOk::List(todo!()),
+        ChannelCommand::List => ChannelCommandOk::List(ChannelMode::help(None)),
         ChannelCommand::Show(_target) => todo!(),
         ChannelCommand::Default(_mode) => todo!(),
         ChannelCommand::Mark(_target, _mode) => todo!(),

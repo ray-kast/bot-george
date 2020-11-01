@@ -1,7 +1,7 @@
 #![warn(missing_docs, clippy::all, clippy::pedantic)]
 #![deny(broken_intra_doc_links, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions)]
-#![feature(async_closure)]
+#![feature(async_closure, binary_heap_into_iter_sorted)]
 
 //! Companion bot for the UCSB GDC Discord server
 

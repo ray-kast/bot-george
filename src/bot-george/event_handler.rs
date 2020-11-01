@@ -25,6 +25,7 @@ use serenity::{
     utils::MessageBuilder,
 };
 use std::{
+    collections::BinaryHeap,
     fmt::{Display, Write},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -32,6 +33,7 @@ use std::{
     },
     thread,
 };
+use strsim::normalized_damerau_levenshtein;
 use tokio::runtime;
 
 // TODO: this is here because async closures are unstable
@@ -89,6 +91,7 @@ impl Handler {
         });
     }
 
+    // TODO: don't prefix the command if the channel is command-only
     pub fn prefix_command<C: Display>(&self, command: C) -> String {
         let mut ret = String::new();
 
@@ -162,6 +165,7 @@ impl Handler {
         channel_id: ChannelId,
         http: impl AsRef<Http>,
         help: &HelpTopic,
+        list_title: impl Display,
     ) -> Result<()>
     {
         fn format_arg_usage(usage: &ArgumentUsage) -> String {
@@ -262,21 +266,23 @@ impl Handler {
                             m
                         })
                     }),
-                HelpTopic::CommandSet(s, c) => msg.content(s).embed(|e| {
-                    e.title("Commands").description({
-                        let mut m = MessageBuilder::new();
+                #[allow(clippy::option_if_let_else)] // Lifetime issues forbid this
+                HelpTopic::CommandSet(s, c) => if let Some(s) = s { msg.content(s) } else { msg }
+                    .embed(|e| {
+                        e.title(list_title).description({
+                            let mut m = MessageBuilder::new();
 
-                        for (i, cmd) in c.iter().enumerate() {
-                            if i != 0 {
-                                m.push('\n');
+                            for (i, cmd) in c.iter().enumerate() {
+                                if i != 0 {
+                                    m.push('\n');
+                                }
+
+                                m.push(" - ").push_line(format_usage(cmd, true));
                             }
 
-                            m.push(" - ").push_line(format_usage(cmd, true));
-                        }
-
-                        m
-                    })
-                }),
+                            m
+                        })
+                    }),
                 HelpTopic::Custom(s) => msg.content(s),
             })
             .await
@@ -315,14 +321,54 @@ impl Handler {
         Ok(())
     }
 
-    fn format_id_error(err: docbot::IdParseError) -> String {
+    fn format_id_error(err: docbot::IdParseError) -> (String, bool) {
+        #[derive(Debug, Clone, Copy, PartialEq)]
+        struct DidYouMean<S: AsRef<str>>(f64, S);
+
+        use std::cmp::Ordering;
+
+        impl<S: Eq + AsRef<str>> Eq for DidYouMean<S> {}
+        impl<S: PartialOrd + AsRef<str>> PartialOrd for DidYouMean<S> {
+            fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+                self.0
+                    .partial_cmp(&rhs.0)
+                    .map(|o| o.then_with(|| rhs.1.partial_cmp(&self.1).unwrap_or(Ordering::Equal)))
+            }
+        }
+        impl<S: Ord + AsRef<str>> Ord for DidYouMean<S> {
+            fn cmp(&self, rhs: &Self) -> Ordering { self.partial_cmp(rhs).unwrap() }
+        }
+
         use docbot::IdParseError::{Ambiguous, NoMatch};
 
         let mut b = MessageBuilder::new();
+        let mut has_help = false;
 
         match err {
-            // TODO: did-you-mean
-            NoMatch(s) => b.push("Not sure what you mean by ").push_mono_safer(s),
+            NoMatch(s, v) => {
+                b.push("Not sure what you mean by ").push_mono_safer(&s);
+
+                for (i, val) in v
+                    .iter()
+                    .map(|v| DidYouMean(normalized_damerau_levenshtein(&s, v), v))
+                    .collect::<BinaryHeap<_>>()
+                    .into_iter_sorted()
+                    .take_while(|DidYouMean(s, _)| *s >= 0.5)
+                    .take(3)
+                    .map(|DidYouMean(_, v)| v)
+                    .enumerate()
+                {
+                    has_help = true;
+
+                    if i == 0 {
+                        b.push("\nDid you mean: ");
+                    } else {
+                        b.push(", ");
+                    }
+
+                    b.push_mono_safer(val);
+                }
+            },
             Ambiguous(v, i) => {
                 b.push("Not sure what you mean by ")
                     .push_mono_safer(i)
@@ -335,25 +381,32 @@ impl Handler {
 
                     b.push_mono_safer(v);
                 }
-
-                &mut b
             },
         }
-        .build()
+
+        (b.build(), has_help)
     }
 
-    fn format_cmd_error(err: docbot::CommandParseError) -> String {
+    fn format_cmd_error_with_path(
+        &self,
+        err: docbot::CommandParseError,
+        path: &mut Option<Vec<&'static str>>,
+    ) -> (String, bool)
+    {
         use docbot::CommandParseError::{
             BadConvert, BadId, MissingRequired, NoInput, Subcommand, Trailing,
         };
 
         let mut b = MessageBuilder::new();
-
-        // TODO: recommend running a help command
+        let mut has_help = false;
 
         match err {
             NoInput => b.push("Expected a command, got nothing"),
-            BadId(e) => b.push(Self::format_id_error(e)),
+            BadId(e) => {
+                let (s, help) = Self::format_id_error(e);
+                has_help |= help;
+                b.push(s)
+            },
             MissingRequired(a) => b.push("Missing required argument ").push_mono_safer(a),
             BadConvert(a, e) => {
                 enum Downcast {
@@ -370,8 +423,16 @@ impl Handler {
                     |e| e.downcast().map_or_else(Downcast::Other, Downcast::Id),
                     Downcast::Cmd,
                 ) {
-                    Downcast::Cmd(e) => b.push(Self::format_cmd_error(e)),
-                    Downcast::Id(e) => b.push(Self::format_id_error(e)),
+                    Downcast::Cmd(e) => {
+                        let (s, help) = self.format_cmd_error_with_path(e, &mut None);
+                        has_help |= help;
+                        b.push(s)
+                    },
+                    Downcast::Id(e) => {
+                        let (s, help) = Self::format_id_error(e);
+                        has_help |= help;
+                        b.push(s)
+                    },
                     Downcast::Other(e) => b.push_safe(e),
                 }
             },
@@ -379,11 +440,38 @@ impl Handler {
                 .push("Too many arguments given (starting with ")
                 .push_mono_safer(s)
                 .push(")"),
-            Subcommand(e) => b
-                .push("Subcommand failed: ")
-                .push(Self::format_cmd_error(*e)),
+            Subcommand(i, e) => {
+                if let Some(p) = path.as_mut() {
+                    p.push(i)
+                }
+                let (s, help) = self.format_cmd_error_with_path(*e, path);
+                has_help |= help;
+
+                b.push("Subcommand ")
+                    .push_mono_safer(&i)
+                    .push(" failed: ")
+                    .push(s)
+            },
+        };
+
+        if !has_help {
+            if let Some(path) = path {
+                path.push("help");
+
+                b.push("\nRun ")
+                    .push_mono_safer(self.prefix_command(path.join(" ")))
+                    .push(" for more info");
+
+                has_help = true;
+            }
         }
-        .build()
+
+        (b.build(), has_help)
+    }
+
+    fn format_cmd_error(&self, err: docbot::CommandParseError) -> String {
+        self.format_cmd_error_with_path(err, &mut Some(Vec::new()))
+            .0
     }
 
     async fn handle_role_command(
@@ -401,8 +489,8 @@ impl Handler {
         let chan = msg.channel_id;
 
         match roles::execute(cmd, msg.author.id, msg.guild_id, &self.pool, self.superuser) {
-            Ok(Help(c)) => Self::send_help(chan, ctx, c).await?,
-            Ok(List(())) => todo!(),
+            Ok(Help(c)) => Self::send_help(chan, ctx, c, "Subcommands").await?,
+            Ok(List(r)) => Self::send_help(chan, ctx, r, "Roles").await?,
             Ok(ShowAll(_map)) => todo!(),
             Ok(ShowOne(_user, _roles)) => todo!(),
             Ok(Added(n)) => {
@@ -444,12 +532,9 @@ impl Handler {
         let chan = msg.channel_id;
 
         match channels::execute(cmd, msg.author.id, msg.guild_id, &self.pool, self.superuser) {
-            Ok(Help(c)) => Self::send_help(chan, ctx, c).await?,
-            Ok(List(())) => todo!(),
-            Ok(ShowAll { .. }) => todo!(),
-            Ok(ShowOne { .. }) => todo!(),
-            Ok(Marked) => todo!(),
-            Ok(Unmarked) => todo!(),
+            Ok(Help(c)) => Self::send_help(chan, ctx, c, "Subcommands").await?,
+            Ok(List(m)) => Self::send_help(chan, ctx, m, "Channel modes").await?,
+            Ok(ShowAll { .. }) | Ok(ShowOne { .. }) | Ok(Marked) | Ok(Unmarked) => todo!(),
             Err(GuildRequired) => Self::send_guild_required(chan, &ctx).await?,
             Err(NoPermission(n)) => Self::send_no_permission(chan, &ctx, n).await?,
             Err(Other(e)) => Err(e).context("an unexpected error occurred")?,
@@ -484,7 +569,7 @@ impl Handler {
         let cmd = match commands::parse_base(s) {
             Ok(c) => c,
             Err(e) => {
-                chan.say(ctx, format!("**ERROR:** {}", Self::format_cmd_error(e)))
+                chan.say(ctx, format!("**ERROR:** {}", self.format_cmd_error(e)))
                     .await
                     .context("failed to send command parse error")?;
                 return Ok(());
@@ -492,7 +577,7 @@ impl Handler {
         };
 
         match cmd {
-            Help(c) => Self::send_help(chan, ctx, BaseCommand::help(c)).await?,
+            Help(c) => Self::send_help(chan, ctx, BaseCommand::help(c), "Commands").await?,
             Version => Self::send_version(chan, ctx).await?,
             Role(c) => self.handle_role_command(ctx, msg, c).await?,
             Channel(c) => self.handle_channel_command(ctx, msg, c).await?,

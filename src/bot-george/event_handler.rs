@@ -298,7 +298,10 @@ impl Handler {
                     .push("This is ")
                     .push_safe(env!("CARGO_BIN_NAME"))
                     .push(" v")
-                    .push_safe(env!("CARGO_PKG_VERSION")),
+                    .push_safe(env!("CARGO_PKG_VERSION"))
+                    .push_safe(
+                        option_env!("GIT_HEAD").map_or_else(String::new, |h| format!("-git{}", h)),
+                    ),
             )
             .embed(|e| {
                 e.title("Build Configuration").description(

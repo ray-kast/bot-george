@@ -12,18 +12,78 @@ fn main() {
         env::var("CARGO_CFG_TARGET_FEATURE").unwrap(),
     );
 
-    let rev = Command::new("git")
+    let toplevel = Command::new("git")
         .arg("rev-parse")
-        .arg("--short")
-        .arg("HEAD")
+        .arg("--show-toplevel")
         .output()
         .unwrap();
 
-    let status = Command::new("git").arg("status").arg("--porcelain").output().unwrap();
+    if toplevel.status.success() {
+        let toplevel = str::from_utf8(&toplevel.stdout).unwrap().trim();
 
-    if rev.status.success() && status.status.success() {
-        println!("cargo:rerun-if-changed=../../.git/index");
-        println!("cargo:rerun-if-changed=../");
+        let rev = Command::new("git")
+            .args(&["rev-parse", "--short", "HEAD"])
+            .current_dir(toplevel)
+            .output()
+            .unwrap();
+
+        let status = Command::new("git")
+            .args(&["status", "--porcelain"])
+            .current_dir(toplevel)
+            .output()
+            .unwrap();
+
+        let ls_files = Command::new("git")
+            .args(&["ls-files", "--full-name"])
+            .current_dir(toplevel)
+            .output()
+            .unwrap();
+
+        assert!(
+            rev.status.success(),
+            "git rev-parse exited with code {}",
+            rev.status
+                .code()
+                .map_or_else(|| "unknown".into(), |s| s.to_string())
+        );
+
+        assert!(
+            status.status.success(),
+            "git status exited with code {}",
+            status
+                .status
+                .code()
+                .map_or_else(|| "unknown".into(), |s| s.to_string())
+        );
+
+        assert!(
+            ls_files.status.success(),
+            "git ls-files exited with code {}",
+            ls_files
+                .status
+                .code()
+                .map_or_else(|| "unknown".into(), |s| s.to_string())
+        );
+
+        println!("cargo:rerun-if-changed={}/.git/index", toplevel);
+
+        for file in str::from_utf8(&ls_files.stdout)
+            .unwrap()
+            .split('\n')
+            .map(|f| f.trim())
+        {
+            println!("cargo:rerun-if-changed={}/{}", toplevel, file);
+        }
+
+        for file in str::from_utf8(&status.stdout)
+            .unwrap()
+            .split('\n')
+            .map(|f| f.trim())
+            .filter(|f| f.len() > 2)
+            .map(|f| &f[2..])
+        {
+            println!("cargo:rerun-if-changed={}/{}", toplevel, file);
+        }
 
         println!(
             "cargo:rustc-env=GIT_HEAD={}{}",
@@ -40,6 +100,14 @@ fn main() {
         .arg("--version")
         .output()
         .unwrap();
+
+    assert!(
+        ver.status.success(),
+        "rustc --version exited with code {}",
+        ver.status
+            .code()
+            .map_or_else(|| "unknown".into(), |s| s.to_string())
+    );
 
     println!(
         "cargo:rustc-env=RUSTC_VERSION={}",

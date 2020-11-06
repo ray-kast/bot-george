@@ -149,7 +149,7 @@ fn relax_lines(s: impl AsRef<str>) -> String {
         static ref LINE_RE: Regex = Regex::new(r"\s*\n\s*").unwrap();
     }
 
-    LINE_RE.replace(s.as_ref().trim(), " ").into_owned()
+    LINE_RE.replace_all(s.as_ref().trim(), " ").into_owned()
 }
 
 fn parse_argument_lines(

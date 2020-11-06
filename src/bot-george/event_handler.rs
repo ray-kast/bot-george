@@ -8,7 +8,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use dispose::defer;
-use docbot::{prelude::*, ArgumentDesc, ArgumentUsage, CommandUsage, HelpTopic};
+use docbot::{prelude::*, ArgumentDesc, ArgumentName, ArgumentUsage, CommandUsage, HelpTopic};
 use lazy_static::lazy_static;
 use log::{error, info};
 use regex::Regex;
@@ -402,6 +402,7 @@ impl Handler {
 
         let mut b = MessageBuilder::new();
         let mut has_help = false;
+        let mut help_cmd = None;
 
         match err {
             NoInput => b.push("Expected a command, got nothing"),
@@ -410,19 +411,23 @@ impl Handler {
                 has_help |= help;
                 b.push(s)
             },
-            MissingRequired(a) => b.push("Missing required argument ").push_mono_safer(a),
-            BadConvert(a, e) => {
+            MissingRequired(ArgumentName { cmd, arg }) => {
+                help_cmd = Some(cmd);
+                b.push("Missing required argument ").push_mono_safer(arg)
+            },
+            BadConvert(ArgumentName { cmd, arg }, err) => {
                 enum Downcast {
                     Cmd(docbot::CommandParseError),
                     Id(docbot::IdParseError),
                     Other(anyhow::Error),
                 }
 
+                help_cmd = Some(cmd);
                 b.push("Failed to process argument ")
-                    .push_mono_safer(a)
+                    .push_mono_safer(arg)
                     .push(": ");
 
-                match e.downcast().map_or_else(
+                match err.downcast().map_or_else(
                     |e| e.downcast().map_or_else(Downcast::Other, Downcast::Id),
                     Downcast::Cmd,
                 ) {
@@ -439,19 +444,21 @@ impl Handler {
                     Downcast::Other(e) => b.push_safe(e),
                 }
             },
-            Trailing(s) => b
-                .push("Too many arguments given (starting with ")
-                .push_mono_safer(s)
-                .push(")"),
-            Subcommand(i, e) => {
+            Trailing(cmd, s) => {
+                help_cmd = Some(cmd);
+                b.push("Too many arguments given (starting with ")
+                    .push_mono_safer(s)
+                    .push(")")
+            },
+            Subcommand(id, err) => {
                 if let Some(p) = path.as_mut() {
-                    p.push(i)
+                    p.push(id)
                 }
-                let (s, help) = self.format_cmd_error_with_path(*e, path);
+                let (s, help) = self.format_cmd_error_with_path(*err, path);
                 has_help |= help;
 
                 b.push("Subcommand ")
-                    .push_mono_safer(&i)
+                    .push_mono_safer(id)
                     .push(" failed: ")
                     .push(s)
             },
@@ -460,6 +467,10 @@ impl Handler {
         if !has_help {
             if let Some(path) = path {
                 path.push("help");
+
+                if let Some(cmd) = help_cmd {
+                    path.push(cmd);
+                }
 
                 b.push("\nRun ")
                     .push_mono_safer(self.prefix_command(path.join(" ")))

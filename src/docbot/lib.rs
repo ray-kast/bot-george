@@ -4,7 +4,12 @@
 
 //! Create a chatbot command interface using a docopt-like API
 
-use std::{convert::Infallible, fmt::Display, str::FromStr};
+use std::{
+    convert::Infallible,
+    fmt,
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 use thiserror::Error;
 
 /// Error type for failures when parsing a command ID
@@ -20,6 +25,21 @@ pub enum IdParseError {
     Ambiguous(&'static [&'static str], String),
 }
 
+/// Identifies an argument to a command
+#[derive(Clone, Copy, Debug)]
+pub struct ArgumentName {
+    /// The ID of the command
+    pub cmd: &'static str,
+    /// The name of the argument
+    pub arg: &'static str,
+}
+
+impl Display for ArgumentName {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("{:?} of {:?}", self.arg, self.cmd))
+    }
+}
+
 /// Error type for failures when parsing a command
 #[derive(Error, Debug)]
 pub enum CommandParseError {
@@ -30,14 +50,14 @@ pub enum CommandParseError {
     #[error("failed to parse command ID")]
     BadId(#[from] IdParseError),
     /// A required argument was missing
-    #[error("missing required argument {0:?}")]
-    MissingRequired(&'static str),
+    #[error("missing required argument {0}")]
+    MissingRequired(ArgumentName),
     /// `TryFrom::try_from` failed for an argument
-    #[error("failed to convert argument {0:?} from a string")]
-    BadConvert(&'static str, anyhow::Error),
+    #[error("failed to convert argument {0} from a string")]
+    BadConvert(ArgumentName, anyhow::Error),
     /// Extra arguments were provided
-    #[error("trailing argument {0:?}")]
-    Trailing(String),
+    #[error("trailing argument {1:?} of {0:?}")]
+    Trailing(&'static str, String),
     /// A subcommand failed to parse
     #[error("failed to parse subcommand {0:?}")]
     Subcommand(&'static str, Box<CommandParseError>),

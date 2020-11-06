@@ -26,16 +26,23 @@ struct FieldInfo<'a> {
 fn collect_rest(span: Span, opts: &FieldOpts, name: &str, iter: &Ident, id: &Ident) -> TokenStream {
     if opts.subcommand {
         quote_spanned! { span =>
-            ::docbot::Command::parse(#iter).map_err(|e| {
-                ::docbot::CommandParseError::Subcommand(#id.to_str(), ::std::boxed::Box::new(e))
-            })
+            ::docbot::Command::parse(#iter).map_err(|e| ::docbot::CommandParseError::Subcommand(
+                ::docbot::CommandId::to_str(&#id),
+                ::std::boxed::Box::new(e),
+            ))
         }
     } else {
         quote_spanned! { span =>
             #iter
                 .map(|s| {
                     s.as_ref().parse().map_err(|e| {
-                        ::docbot::CommandParseError::BadConvert(#name, ::docbot::Anyhow::from(e))
+                        ::docbot::CommandParseError::BadConvert(
+                            ::docbot::ArgumentName {
+                                cmd: ::docbot::CommandId::to_str(&#id),
+                                arg: #name,
+                            },
+                            ::docbot::Anyhow::from(e)
+                        )
                     })
                 })
                 .collect::<::std::result::Result<_, _>>()
@@ -119,11 +126,19 @@ fn ctor_fields(
                 FieldMode::Required => quote_spanned! { span =>
                     #iter
                         .next()
-                        .ok_or(::docbot::CommandParseError::MissingRequired(#name))?
+                        .ok_or(::docbot::CommandParseError::MissingRequired(
+                            ::docbot::ArgumentName {
+                                cmd: ::docbot::CommandId::to_str(&#id),
+                                arg: #name
+                            }
+                        ))?
                         .as_ref()
                         .parse()
                         .map_err(|e| ::docbot::CommandParseError::BadConvert(
-                            #name,
+                            ::docbot::ArgumentName {
+                                cmd: ::docbot::CommandId::to_str(&#id),
+                                arg: #name,
+                            },
                             ::docbot::Anyhow::from(e),
                         ))?
                 },
@@ -133,7 +148,10 @@ fn ctor_fields(
                         .map(|s| s.as_ref().parse())
                         .transpose()
                         .map_err(|e| ::docbot::CommandParseError::BadConvert(
-                            #name,
+                            ::docbot::ArgumentName {
+                                cmd: ::docbot::CommandId::to_str(&#id),
+                                arg: #name,
+                            },
                             ::docbot::Anyhow::from(e),
                         ))?
                 },
@@ -148,7 +166,12 @@ fn ctor_fields(
                             if let Some(..) = #peekable.peek() {
                                 #collected
                             } else {
-                                Err(::docbot::CommandParseError::MissingRequired(#name))
+                                Err(::docbot::CommandParseError::MissingRequired(
+                                    ::docbot::ArgumentName {
+                                        cmd: ::docbot::CommandId::to_str(&#id),
+                                        arg: #name,
+                                    }
+                                ))
                             }
                         }?
                     }
@@ -184,7 +207,10 @@ fn ctor_fields(
     Ok(if let RestArg::None = docs.usage.rest {
         let check = quote_spanned! { span =>
             if let Some(__trail) = #iter.next() {
-                return Err(::docbot::CommandParseError::Trailing(__trail.as_ref().into()));
+                return Err(::docbot::CommandParseError::Trailing(
+                    ::docbot::CommandId::to_str(&#id),
+                    __trail.as_ref().into(),
+                ));
             }
         };
 

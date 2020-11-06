@@ -1,4 +1,25 @@
-use std::{env, process::Command, str};
+use std::{
+    env,
+    fmt::Display,
+    process::{Command, Output},
+    str,
+};
+
+fn run(c: &mut Command, name: impl Display) -> Output {
+    let output = c.output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{} exited with code {}",
+        name,
+        output
+            .status
+            .code()
+            .map_or_else(|| "???".into(), |s| s.to_string())
+    );
+
+    output
+}
 
 fn main() {
     for var in &["HOST", "TARGET", "PROFILE"] {
@@ -21,48 +42,25 @@ fn main() {
     if toplevel.status.success() {
         let toplevel = str::from_utf8(&toplevel.stdout).unwrap().trim();
 
-        let rev = Command::new("git")
-            .args(&["rev-parse", "--short", "HEAD"])
-            .current_dir(toplevel)
-            .output()
-            .unwrap();
-
-        let status = Command::new("git")
-            .args(&["status", "--porcelain"])
-            .current_dir(toplevel)
-            .output()
-            .unwrap();
-
-        let ls_files = Command::new("git")
-            .args(&["ls-files", "--full-name"])
-            .current_dir(toplevel)
-            .output()
-            .unwrap();
-
-        assert!(
-            rev.status.success(),
-            "git rev-parse exited with code {}",
-            rev.status
-                .code()
-                .map_or_else(|| "unknown".into(), |s| s.to_string())
+        let rev = run(
+            Command::new("git")
+                .args(&["rev-parse", "--short", "HEAD"])
+                .current_dir(toplevel),
+            "git rev-parse",
         );
 
-        assert!(
-            status.status.success(),
-            "git status exited with code {}",
-            status
-                .status
-                .code()
-                .map_or_else(|| "unknown".into(), |s| s.to_string())
+        let status = run(
+            Command::new("git")
+                .args(&["status", "--porcelain"])
+                .current_dir(toplevel),
+            "git status",
         );
 
-        assert!(
-            ls_files.status.success(),
-            "git ls-files exited with code {}",
-            ls_files
-                .status
-                .code()
-                .map_or_else(|| "unknown".into(), |s| s.to_string())
+        let ls_files = run(
+            Command::new("git")
+                .args(&["ls-files", "--full-name"])
+                .current_dir(toplevel),
+            "git ls-files",
         );
 
         println!("cargo:rerun-if-changed={}/.git/index", toplevel);
@@ -94,19 +92,38 @@ fn main() {
                 "-DIRTY"
             }
         );
+
+        let branch = run(
+            Command::new("git").args(&["branch", "--show-current", "--format=%(refname:short)"]),
+            "git branch",
+        );
+
+        let remote = run(
+            Command::new("git").arg("config").arg(format!(
+                "branch.{}.remote",
+                str::from_utf8(&branch.stdout).unwrap().trim()
+            )),
+            "git config",
+        );
+
+        let remote_url = run(
+            Command::new("git")
+                .args(&["remote", "get-url"])
+                .arg(str::from_utf8(&remote.stdout).unwrap().trim()),
+            "git remote",
+        );
+
+        println!(
+            "cargo:rustc-env=GIT_REMOTE={}",
+            str::from_utf8(&remote_url.stdout).unwrap().trim()
+        );
+
+        println!("cargo:rerun-if-changed={}/.git/config", toplevel);
     }
 
-    let ver = Command::new(env::var("RUSTC").unwrap())
-        .arg("--version")
-        .output()
-        .unwrap();
-
-    assert!(
-        ver.status.success(),
-        "rustc --version exited with code {}",
-        ver.status
-            .code()
-            .map_or_else(|| "unknown".into(), |s| s.to_string())
+    let ver = run(
+        Command::new(env::var("RUSTC").unwrap()).arg("--version"),
+        "rustc --version",
     );
 
     println!(

@@ -301,6 +301,9 @@ impl Handler {
                     .push_safe(env!("CARGO_PKG_VERSION"))
                     .push_safe(
                         option_env!("GIT_HEAD").map_or_else(String::new, |h| format!("-git{}", h)),
+                    )
+                    .push_safe(
+                        option_env!("GIT_REMOTE").map_or_else(String::new, |r| format!(" ({})", r)),
                     ),
             )
             .embed(|e| {

@@ -341,9 +341,9 @@ impl ParseDocs for CommandSetDocs {
 
         let summary = summary.trim();
         let summary = if summary.is_empty() {
-            Some(summary.into())
-        } else {
             None
+        } else {
+            Some(summary.into())
         };
 
         Ok(Self { span, summary })

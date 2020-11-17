@@ -11,7 +11,7 @@ use dispose::defer;
 use docbot::{prelude::*, ArgumentDesc, ArgumentName, ArgumentUsage, CommandUsage, HelpTopic};
 use lazy_static::lazy_static;
 use log::{error, info};
-use regex::Regex;
+use regex::{Captures, Regex};
 use serenity::{
     async_trait,
     client::{Context, EventHandler},
@@ -25,6 +25,7 @@ use serenity::{
     utils::MessageBuilder,
 };
 use std::{
+    borrow::Cow,
     collections::BinaryHeap,
     fmt::{Display, Write},
     sync::{
@@ -160,66 +161,84 @@ impl Handler {
         Ok(())
     }
 
+    fn format_help_content<'a>(&self, s: &'a str) -> Cow<'a, str> {
+        lazy_static! {
+            static ref COMMAND_RE: Regex = Regex::new(r"\[`([^`]+)`\]\(\)").unwrap();
+        }
+
+        COMMAND_RE.replace_all(s, |c: &Captures| {
+            let cmd = &c[1];
+            assert!(commands::parse_base(cmd).is_ok());
+
+            format!("`{}`", self.prefix_command(cmd))
+        })
+    }
+
+    fn format_arg_usage(usage: &ArgumentUsage) -> String {
+        let mut ret = String::new();
+
+        ret.push(if usage.is_required { '<' } else { '[' });
+        ret.push_str(usage.name);
+        if usage.is_rest {
+            ret.push_str("...");
+        }
+        ret.push(if usage.is_required { '>' } else { ']' });
+
+        ret
+    }
+
+    fn format_command_usage(&self, usage: &CommandUsage, rich: bool) -> String {
+        let mut ret = Vec::new();
+
+        {
+            let mut ids = String::new();
+
+            lazy_static! {
+                static ref NON_WORD_RE: Regex = Regex::new(r"\s").unwrap();
+            }
+
+            let paren = usage.ids.len() != 1 || NON_WORD_RE.is_match(usage.ids.first().unwrap());
+
+            if paren {
+                ids.push('(');
+            }
+
+            write!(ids, "{}", usage.ids.join("|")).unwrap();
+
+            if paren {
+                ids.push(')');
+            }
+
+            ret.push(ids);
+        }
+
+        ret.extend(usage.args.iter().map(|a| Self::format_arg_usage(a)));
+
+        let desc = self.format_help_content(usage.desc);
+
+        if rich {
+            format!("**{}**\n{}", ret.join(" "), desc)
+        } else {
+            format!("{}\n{}", ret.join(" "), desc)
+        }
+    }
+
     // TODO: send the reply to a DM if the channel is not a command-only channel
     async fn send_help(
+        &self,
         channel_id: ChannelId,
         http: impl AsRef<Http>,
         help: &HelpTopic,
         list_title: impl Display,
     ) -> Result<()>
     {
-        fn format_arg_usage(usage: &ArgumentUsage) -> String {
-            let mut ret = String::new();
-
-            ret.push(if usage.is_required { '<' } else { '[' });
-            ret.push_str(usage.name);
-            if usage.is_rest {
-                ret.push_str("...");
-            }
-            ret.push(if usage.is_required { '>' } else { ']' });
-
-            ret
-        }
-
-        fn format_usage(usage: &CommandUsage, rich: bool) -> String {
-            let mut ret = Vec::new();
-
-            {
-                let mut ids = String::new();
-
-                lazy_static! {
-                    static ref NON_WORD_RE: Regex = Regex::new(r"\s").unwrap();
-                }
-
-                let paren =
-                    usage.ids.len() != 1 || NON_WORD_RE.is_match(usage.ids.first().unwrap());
-
-                if paren {
-                    ids.push('(');
-                }
-
-                write!(ids, "{}", usage.ids.join("|")).unwrap();
-
-                if paren {
-                    ids.push(')');
-                }
-
-                ret.push(ids);
-            }
-
-            ret.extend(usage.args.iter().map(|a| format_arg_usage(a)));
-
-            if rich {
-                format!("**{}**\n{}", ret.join(" "), usage.desc)
-            } else {
-                format!("{}\n{}", ret.join(" "), usage.desc)
-            }
-        }
-
         channel_id
             .send_message(http, |msg| match help {
                 HelpTopic::Command(u, d) => msg
-                    .content(format!("**Usage:** {}", format_usage(u, false)))
+                    .content(format!(
+                        "**Usage:** {}",
+                        self.format_command_usage(u, false)
+                    ))
                     .embed(|e| {
                         e.title("Description").description({
                             enum Block {
@@ -246,7 +265,7 @@ impl Handler {
 
                                 match block {
                                     Block::Par(s) => {
-                                        m.push_line(s);
+                                        m.push_line(self.format_help_content(s));
                                     },
                                     Block::Head(s) => {
                                         m.push(s);
@@ -258,7 +277,7 @@ impl Handler {
                                             m.push(" (optional)");
                                         }
 
-                                        m.push(": ").push_line(a.desc);
+                                        m.push(": ").push_line(self.format_help_content(a.desc));
                                     },
                                 }
                             }
@@ -267,23 +286,28 @@ impl Handler {
                         })
                     }),
                 #[allow(clippy::option_if_let_else)] // Lifetime issues forbid this
-                HelpTopic::CommandSet(s, c) => if let Some(s) = s { msg.content(s) } else { msg }
-                    .embed(|e| {
-                        e.title(list_title).description({
-                            let mut m = MessageBuilder::new();
+                HelpTopic::CommandSet(s, c) => if let Some(s) = s {
+                    msg.content(self.format_help_content(s))
+                } else {
+                    msg
+                }
+                .embed(|e| {
+                    e.title(list_title).description({
+                        let mut m = MessageBuilder::new();
 
-                            for (i, cmd) in c.iter().enumerate() {
-                                if i != 0 {
-                                    m.push('\n');
-                                }
-
-                                m.push(" - ").push_line(format_usage(cmd, true));
+                        for (i, cmd) in c.iter().enumerate() {
+                            if i != 0 {
+                                m.push('\n');
                             }
 
-                            m
-                        })
-                    }),
-                HelpTopic::Custom(s) => msg.content(s),
+                            m.push(" - ")
+                                .push_line(self.format_command_usage(cmd, true));
+                        }
+
+                        m
+                    })
+                }),
+                HelpTopic::Custom(s) => msg.content(self.format_help_content(s)),
             })
             .await
             .context("failed to send help")?;
@@ -300,7 +324,7 @@ impl Handler {
                     .push(" v")
                     .push_safe(env!("CARGO_PKG_VERSION"))
                     .push_safe(
-                        option_env!("GIT_HEAD").map_or_else(String::new, |h| format!("-git{}", h)),
+                        option_env!("GIT_HEAD").map_or_else(String::new, |h| format!(".git+{}", h)),
                     )
                     .push_safe(
                         option_env!("GIT_REMOTE").map_or_else(String::new, |r| format!(" ({})", r)),
@@ -356,10 +380,15 @@ impl Handler {
 
                 for (i, val) in v
                     .iter()
-                    .map(|v| DidYouMean(normalized_damerau_levenshtein(&s, v), v))
+                    .map(|v| {
+                        DidYouMean(
+                            normalized_damerau_levenshtein(&s, &v[0..v.len().min(s.len() + 1)]),
+                            v,
+                        )
+                    })
                     .collect::<BinaryHeap<_>>()
                     .into_iter_sorted()
-                    .take_while(|DidYouMean(s, _)| *s >= 0.5)
+                    .take_while(|DidYouMean(s, _)| *s >= 0.3)
                     .take(3)
                     .map(|DidYouMean(_, v)| v)
                     .enumerate()
@@ -506,8 +535,8 @@ impl Handler {
         let chan = msg.channel_id;
 
         match roles::execute(cmd, msg.author.id, msg.guild_id, &self.pool, self.superuser) {
-            Ok(Help(c)) => Self::send_help(chan, ctx, c, "Subcommands").await?,
-            Ok(List(r)) => Self::send_help(chan, ctx, r, "Roles").await?,
+            Ok(Help(c)) => self.send_help(chan, ctx, c, "Subcommands").await?,
+            Ok(List(r)) => self.send_help(chan, ctx, r, "Roles").await?,
             Ok(ShowAll(_map)) => todo!(),
             Ok(ShowOne(_user, _roles)) => todo!(),
             Ok(Added(n)) => {
@@ -549,8 +578,8 @@ impl Handler {
         let chan = msg.channel_id;
 
         match channels::execute(cmd, msg.author.id, msg.guild_id, &self.pool, self.superuser) {
-            Ok(Help(c)) => Self::send_help(chan, ctx, c, "Subcommands").await?,
-            Ok(List(m)) => Self::send_help(chan, ctx, m, "Channel modes").await?,
+            Ok(Help(c)) => self.send_help(chan, ctx, c, "Subcommands").await?,
+            Ok(List(m)) => self.send_help(chan, ctx, m, "Channel modes").await?,
             Ok(ShowAll { .. }) | Ok(ShowOne { .. }) | Ok(Marked) | Ok(Unmarked) => todo!(),
             Err(GuildRequired) => Self::send_guild_required(chan, &ctx).await?,
             Err(NoPermission(n)) => Self::send_no_permission(chan, &ctx, n).await?,
@@ -594,7 +623,10 @@ impl Handler {
         };
 
         match cmd {
-            Help(c) => Self::send_help(chan, ctx, BaseCommand::help(c), "Commands").await?,
+            Help(c) => {
+                self.send_help(chan, ctx, BaseCommand::help(c), "Commands")
+                    .await?
+            },
             Version => Self::send_version(chan, ctx).await?,
             Role(c) => self.handle_role_command(ctx, msg, c).await?,
             Channel(c) => self.handle_channel_command(ctx, msg, c).await?,

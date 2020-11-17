@@ -38,7 +38,7 @@ pub enum ChannelCommand {
     /// Set the default behavior mode for unmarked channels
     ///
     /// # Arguments
-    /// mode: The default mode to use.  Run [`channel ls`]() for a list of
+    /// mode: The default mode to use.  Run [`channels ls`]() for a list of
     ///       valid modes
     Default(ChannelMode),
 
@@ -47,7 +47,7 @@ pub enum ChannelCommand {
     ///
     /// # Arguments
     /// channel: The channel to mark.  Must be a valid #mention in order to work
-    /// mode: The mode to mark the channel with.  Run [`channel ls`]() for a
+    /// mode: The mode to mark the channel with.  Run [`channels ls`]() for a
     ///       list of valid modes
     Mark(ChannelId, ChannelMode),
 

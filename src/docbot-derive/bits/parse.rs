@@ -124,6 +124,7 @@ fn ctor_fields(
             name,
             match mode {
                 FieldMode::Required => quote_spanned! { span =>
+                    #[allow(clippy::or_fun_call)]
                     #iter
                         .next()
                         .ok_or(::docbot::CommandParseError::MissingRequired(

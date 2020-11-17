@@ -10,7 +10,6 @@ use regex::Regex;
 
 #[derive(Docbot, Debug)]
 /// TODO: document `BaseCommand`
-/// TODO: prefix command names
 pub enum BaseCommand {
     /// help [command]
     /// Display information about the bot, or get help on a particular command
@@ -23,18 +22,18 @@ pub enum BaseCommand {
     /// Display the bot version and build info
     Version,
 
-    /// (role|roles) <subcommand...>
+    /// roles <subcommand...>
     /// Manage bot-specific roles for users
     ///
     /// # Arguments
     /// subcommand: The subcommand to run.  Run [`roles help`]() for more info
     Role(#[docbot(subcommand)] RoleCommand),
 
-    /// channel <subcommand...>
+    /// channels <subcommand...>
     /// Manage channel-specific bot behavior
     ///
     /// # Arguments
-    /// subcommand: The subcommand to run.  Run [`channel help`]() for more info
+    /// subcommand: The subcommand to run.  Run [`channels help`]() for more info
     Channel(#[docbot(subcommand)] ChannelCommand),
 
     /// schedule <subcommand...>
